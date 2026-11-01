@@ -111,9 +111,9 @@ test("a full reset deletes every answer and commitment", () => {
   assert.deepEqual(c.week, { is_saved: false, is_skipped: false });
 });
 
-test("a week is past only after its Sunday", () => {
-  assert.equal(isPast("2026-11-02", "2026-11-08"), false);
-  assert.equal(isPast("2026-11-02", "2026-11-09"), true);
+test("a week becomes past on its Sunday", () => {
+  assert.equal(isPast("2026-11-02", "2026-11-07"), false);
+  assert.equal(isPast("2026-11-02", "2026-11-08"), true);
 });
 
 test("any booked commitment locks a week, and removing it reopens the week", () => {

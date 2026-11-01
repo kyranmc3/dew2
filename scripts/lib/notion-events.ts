@@ -101,12 +101,12 @@ export function weekDays(monday: string): string[] {
   return [1, 2, 3].map((offset) => new Date(start.getTime() + offset * 86400000).toISOString().slice(0, 10));
 }
 
-// A week stays in the window until its Thursday has passed: this week and the next 8.
+// This week and the next 8. The new week starts on Sunday, the day before its Monday.
 export function windowMondays(today: string, weeksAhead = 8): string[] {
   const day = new Date(`${today}T00:00:00Z`);
   const sinceMonday = (day.getUTCDay() + 6) % 7;
   const monday = new Date(day.getTime() - sinceMonday * 86400000);
-  const first = sinceMonday > 3 ? monday.getTime() + 7 * 86400000 : monday.getTime();
+  const first = sinceMonday === 6 ? monday.getTime() + 7 * 86400000 : monday.getTime();
   return Array.from({ length: weeksAhead + 1 }, (_, i) => new Date(first + i * 7 * 86400000).toISOString().slice(0, 10));
 }
 

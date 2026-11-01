@@ -96,10 +96,11 @@ test("windowMondays covers this week and the next 8", () => {
   assert.equal(windowMondays("2026-11-05")[0], "2026-11-02");
 });
 
-test("a week leaves the window once its Thursday has passed", () => {
-  assert.equal(windowMondays("2026-11-06")[0], "2026-11-09");
-  assert.equal(windowMondays("2026-11-01")[0], "2026-11-02");
+test("the window rolls over on Sunday", () => {
+  assert.equal(windowMondays("2026-11-06")[0], "2026-11-02");
+  assert.equal(windowMondays("2026-11-07")[0], "2026-11-02");
   assert.equal(windowMondays("2026-11-08")[0], "2026-11-09");
+  assert.equal(windowMondays("2026-11-01")[0], "2026-11-02");
 });
 
 test("removalProblem stops large removals only", () => {

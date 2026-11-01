@@ -66,7 +66,8 @@ export const isLocked = (s: WeekState) => planIds(s).some((id) => s.plan[id].boo
 
 export function isPast(monday: string, today: string) {
   const sunday = new Date(new Date(`${monday}T00:00:00Z`).getTime() + 6 * 86400000).toISOString().slice(0, 10);
-  return today > sunday;
+  // The week rolls over on Sunday morning.
+  return today >= sunday;
 }
 
 export type WeekStatus = "past" | "skipped" | "locked" | "decided" | "review" | "notReady";
