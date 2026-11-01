@@ -25,7 +25,8 @@ type EventRow = {
   link: string | null;
   description: string | null;
   poster_path: string | null;
-  synced_at: string;
+  is_active: boolean;
+  notion_edited_at: string | null;
 };
 
 const posterUrl = (path: string | null) =>
@@ -46,6 +47,8 @@ const toEvent = (e: EventRow): WeekEvent => ({
   img: posterUrl(e.poster_path),
   link: e.link,
   desc: e.description,
+  removed: !e.is_active,
+  checkedAt: e.notion_edited_at,
 });
 
 const toWeek = (w: { start_date: string; days: string[]; is_ready: boolean; day_notes: Record<string, string> }): WeekInfo => ({
@@ -64,21 +67,25 @@ export async function loadWeek(supabase: SupabaseClient, start: string): Promise
   return row ? toWeek(row) : null;
 }
 
-// In date and start-time order, with unknown times last.
-export async function loadEvents(supabase: SupabaseClient, first: string, last: string) {
+// In date and start-time order, with unknown times last. Includes removed events.
+export async function loadEvents(supabase: SupabaseClient, first: string, last: string): Promise<WeekEvent[]> {
   const rows: EventRow[] = check(
     await supabase
       .from("events")
-      .select("id, name, source, type, format, featuring, venue, neighborhood, event_date, start_time, end_time, price, availability, link, description, poster_path, synced_at")
-      .eq("is_active", true)
+      .select("id, name, source, type, format, featuring, venue, neighborhood, event_date, start_time, end_time, price, availability, link, description, poster_path, is_active, notion_edited_at")
       .gte("event_date", first)
       .lte("event_date", last)
       .order("event_date")
       .order("start_time", { nullsFirst: false }),
   );
-  const checkedAt = rows.map((r) => r.synced_at).sort().at(-1) ?? null;
-  return { events: rows.map(toEvent), checkedAt };
+  return rows.map(toEvent);
 }
+
+// A removed event stays visible only while the user is committed to it.
+export const visibleEvents = (events: WeekEvent[], plan: { event_id: string }[]) => {
+  const committed = new Set(plan.map((p) => p.event_id));
+  return events.filter((e) => !e.removed || committed.has(e.id));
+};
 
 export async function loadSources(supabase: SupabaseClient): Promise<string[]> {
   const rows: { source: string | null }[] = check(await supabase.from("events").select("source").eq("is_active", true));
@@ -94,18 +101,26 @@ export async function loadWeekState(supabase: SupabaseClient, weekStart: string,
   return buildState(new Set(eventIds), check<ResponseRow[]>(responses), check<PlanRow[]>(plan), check<WeekStateRow | null>(week));
 }
 
-// All of the user's choices at once, for the home page. Row-level security limits these to the user.
-export async function loadAllChoices(supabase: SupabaseClient) {
-  const [responses, plan, weeks] = await Promise.all([
+// Every week with its events and the user's choices, for the home and past weeks pages.
+// Row-level security limits the choices to the user.
+export async function loadWeekSummaries(supabase: SupabaseClient) {
+  const weeks = check<{ start_date: string; days: string[]; is_ready: boolean; day_notes: Record<string, string> }[]>(
+    await supabase.from("weeks").select("start_date, days, is_ready, day_notes").order("start_date"),
+  ).map(toWeek);
+  const [responses, plan, states] = await Promise.all([
     supabase.from("responses").select("event_id, answer, shortlist_rank"),
     supabase.from("plan_entries").select("event_id, booking"),
     supabase.from("week_states").select("week_start, is_saved, is_skipped"),
   ]);
-  return {
-    responses: check<ResponseRow[]>(responses),
-    plan: check<PlanRow[]>(plan),
-    weekStates: check<(WeekStateRow & { week_start: string })[]>(weeks),
-  };
+  const planRows = check<PlanRow[]>(plan);
+  const responseRows = check<ResponseRow[]>(responses);
+  const stateRows = check<(WeekStateRow & { week_start: string })[]>(states);
+  const events = weeks.length ? visibleEvents(await loadEvents(supabase, weeks[0].days[0], weeks.at(-1)!.days.at(-1)!), planRows) : [];
+  return weeks.map((week) => {
+    const weekEvents = events.filter((e) => week.days.includes(e.date));
+    const state = buildState(new Set(weekEvents.map((e) => e.id)), responseRows, planRows, stateRows.find((s) => s.week_start === week.start));
+    return { week, events: weekEvents, state };
+  });
 }
 
 // Writes the difference between two states. Commitments are removed before their

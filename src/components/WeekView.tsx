@@ -4,27 +4,37 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { loadWeekState, saveChanges } from "@/lib/weeks/data";
-import { diffStates, isDecided, noChanges } from "@/lib/weeks/state";
+import { diffStates, isDecided, isPast, noChanges } from "@/lib/weeks/state";
 import type { WeekEvent, WeekInfo, WeekState } from "@/lib/weeks/types";
 import DecidedWeek from "./DecidedWeek";
 import ReviewWeek from "./ReviewWeek";
 import SkippedWeek from "./SkippedWeek";
 
-type Props = { week: WeekInfo; events: WeekEvent[]; checkedAt: string | null; userId: string; initial: WeekState };
+type Props = { week: WeekInfo; events: WeekEvent[]; today: string; userId: string; initial: WeekState };
 
 export type WeekActions = {
   change: (update: (s: WeekState) => WeekState) => void;
   leave: () => void;
   edit: () => void;
+  reviewFrom: (eventId: string) => void;
   stopEditing: () => void;
 };
 
-export default function WeekView({ week, events, checkedAt, userId, initial }: Props) {
+export default function WeekView({ week, events, today, userId, initial }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [state, setState] = useState(initial);
   const [editing, setEditing] = useState(false);
   const [failed, setFailed] = useState(false);
+  const readOnly = isPast(week.start, today);
+
+  // Set when opening the review at a particular event, used once it has rendered.
+  const scrollTarget = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editing || !scrollTarget.current) return;
+    document.getElementById(`event-${scrollTarget.current}`)?.scrollIntoView({ block: "start" });
+    scrollTarget.current = null;
+  }, [editing]);
 
   // The screen updates at once and the database catches up, one write at a time.
   // Rapid clicks collapse into the latest state.
@@ -101,11 +111,15 @@ export default function WeekView({ week, events, checkedAt, userId, initial }: P
     change,
     leave: async () => {
       await flush();
-      router.push("/");
+      router.push(readOnly ? "/past-weeks" : "/");
     },
     edit: () => {
       setEditing(true);
       window.scrollTo({ top: 0 });
+    },
+    reviewFrom: (eventId) => {
+      scrollTarget.current = eventId;
+      setEditing(true);
     },
     stopEditing: () => {
       setEditing(false);
@@ -113,10 +127,16 @@ export default function WeekView({ week, events, checkedAt, userId, initial }: P
     },
   };
 
-  const props = { week, events, checkedAt, state, actions };
+  const props = { week, events, state, actions };
   return (
     <>
-      {state.skipped ? <SkippedWeek {...props} /> : isDecided(state) && !editing ? <DecidedWeek {...props} /> : <ReviewWeek {...props} />}
+      {state.skipped ? (
+        <SkippedWeek {...props} readOnly={readOnly} />
+      ) : readOnly || (isDecided(state) && !editing) ? (
+        <DecidedWeek {...props} readOnly={readOnly} />
+      ) : (
+        <ReviewWeek {...props} />
+      )}
       {failed && (
         <div className="fail" role="status">
           Your last change didn&apos;t save. It will keep trying while this page is open.

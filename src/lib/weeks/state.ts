@@ -61,6 +61,29 @@ export function bookingLine(s: WeekState) {
     .join(", ");
 }
 
+// A week is locked once something is booked, which stops prompts about new events.
+export const isLocked = (s: WeekState) => planIds(s).some((id) => s.plan[id].booking === "booked");
+
+export function isPast(monday: string, today: string) {
+  const sunday = new Date(new Date(`${monday}T00:00:00Z`).getTime() + 6 * 86400000).toISOString().slice(0, 10);
+  return today > sunday;
+}
+
+export type WeekStatus = "past" | "skipped" | "locked" | "decided" | "review" | "notReady";
+
+// The first that applies wins.
+export function weekStatus(monday: string, today: string, hasEvents: boolean, s: WeekState): WeekStatus {
+  if (isPast(monday, today)) return "past";
+  if (s.skipped) return "skipped";
+  if (isLocked(s)) return "locked";
+  if (isDecided(s)) return "decided";
+  return hasEvents ? "review" : "notReady";
+}
+
+// Events waiting for an answer. Only a Decided week prompts about these.
+export const toReview = <E extends { id: string; removed: boolean }>(events: E[], s: WeekState) =>
+  events.filter((e) => !e.removed && !s.answers[e.id]);
+
 export type ResponseRow = { event_id: string; answer: Answer; shortlist_rank: number | null };
 export type PlanRow = { event_id: string; booking: Booking };
 export type WeekStateRow = { is_saved: boolean; is_skipped: boolean };

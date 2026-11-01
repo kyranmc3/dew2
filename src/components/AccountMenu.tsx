@@ -18,6 +18,9 @@ export default function AccountMenu() {
           <Link href="/settings" className="menu-item" id="open-settings">
             Settings
           </Link>
+          <Link href="/past-weeks" className="menu-item" id="open-past-weeks">
+            Past Weeks
+          </Link>
           <form action="/auth/signout" method="post">
             <button type="submit" id="log-out">
               Log out

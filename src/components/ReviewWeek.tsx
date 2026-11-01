@@ -5,10 +5,10 @@ import { checkedOn, dayLabel, priceText, shortDate, timeText, weekLabel, weekRan
 import { answerEvent, canSave, commitEvent, hasChoices, moveEvent } from "@/lib/weeks/state";
 import { EMPTY_STATE, type Answer, type WeekEvent, type WeekInfo, type WeekState } from "@/lib/weeks/types";
 import MoreMenu from "./MoreMenu";
-import { AvailabilityTag, ExternalLink, Poster } from "./parts";
+import { AvailabilityTag, ExternalLink, Poster, Tag } from "./parts";
 import type { WeekActions } from "./WeekView";
 
-type Props = { week: WeekInfo; events: WeekEvent[]; checkedAt: string | null; state: WeekState; actions: WeekActions };
+type Props = { week: WeekInfo; events: WeekEvent[]; state: WeekState; actions: WeekActions };
 
 const ANSWERS: { value: Answer; label: string }[] = [
   { value: "no", label: "No" },
@@ -24,7 +24,7 @@ function EventCard({ event: e, state, actions }: { event: WeekEvent; state: Week
       <div className="card-body">
         <div className="card-meta">
           <span>{[e.type, e.format, e.place].filter(Boolean).join(" · ")}</span>
-          <AvailabilityTag avail={e.avail} />
+          {e.removed ? <Tag kind="sold">No longer listed</Tag> : <AvailabilityTag avail={e.avail} />}
         </div>
         <h3 style={{ fontSize: 20 }}>{e.name}</h3>
         <div className="small" style={{ fontWeight: 800 }}>
@@ -68,6 +68,18 @@ function ShortlistRow({ event: e, index, state, actions }: { event: WeekEvent; i
           <b style={{ fontWeight: 800 }}>{e.name}</b>
           <br />
           {shortDate(e.date)}, {e.start ?? "Time not listed"} · {priceText(e.price)}
+          {e.removed && (
+            <>
+              <br />
+              <Tag kind="sold">No longer listed</Tag>
+            </>
+          )}
+          {!e.removed && e.checkedAt && (
+            <>
+              <br />
+              <span className="checked">Checked {checkedOn(e.checkedAt)}</span>
+            </>
+          )}
         </span>
         <div className="arrows">
           <button type="button" className="btn" disabled={index === 0} aria-label={`Move ${e.name} up`} onClick={() => actions.change((s) => moveEvent(s, e.id, -1))}>
@@ -98,7 +110,7 @@ function ShortlistRow({ event: e, index, state, actions }: { event: WeekEvent; i
   );
 }
 
-export default function ReviewWeek({ week, events, checkedAt, state, actions }: Props) {
+export default function ReviewWeek({ week, events, state, actions }: Props) {
   const byId = new Map(events.map((e) => [e.id, e]));
   const answered = events.filter((e) => state.answers[e.id]).length;
   const committed = Object.keys(state.plan).length;
@@ -203,7 +215,6 @@ export default function ReviewWeek({ week, events, checkedAt, state, actions }: 
             <br />
             {summary}
           </div>
-          {checkedAt && <p className="checked">Prices and availability as of {checkedOn(checkedAt)}</p>}
           {week.days.map((date) => {
             const dayEvents = events.filter((e) => e.date === date);
             const saidNo = dayEvents.filter((e) => state.answers[e.id] === "no");

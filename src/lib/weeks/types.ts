@@ -16,6 +16,8 @@ export type WeekEvent = {
   img: string | null;
   link: string | null;
   desc: string | null;
+  removed: boolean; // no longer in Notion, and only shown while committed
+  checkedAt: string | null; // last edited in Notion
 };
 
 export type WeekInfo = {

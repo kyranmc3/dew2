@@ -1,7 +1,7 @@
 // Turns Notion Activity Database rows into rows for the events table.
 
 type NotionProperty = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-export type NotionPage = { id: string; properties: Record<string, NotionProperty> };
+export type NotionPage = { id: string; last_edited_time?: string; properties: Record<string, NotionProperty> };
 
 export type PosterFile = { url: string; source: string };
 
@@ -21,6 +21,7 @@ export type EventRow = {
   availability: string | null;
   link: string | null;
   description: string | null;
+  notion_edited_at: string | null;
 };
 
 const text = (prop?: NotionProperty): string | null => {
@@ -65,7 +66,6 @@ export function toEventRow(page: NotionPage): { row: EventRow | null; poster: Po
 
   const file = p["Poster or Image"]?.files?.[0];
   const url: string | undefined = file?.file?.url ?? file?.external?.url;
-  if (!url) warnings.push(`${label}: no poster`);
 
   return {
     row: {
@@ -84,6 +84,7 @@ export function toEventRow(page: NotionPage): { row: EventRow | null; poster: Po
       availability: select(p["Availability"]),
       link,
       description: text(p["Description"]),
+      notion_edited_at: page.last_edited_time ?? null,
     },
     // Notion's file links change on every read, but the path stays the same for the same file.
     poster: url ? { url, source: new URL(url).pathname } : null,
@@ -98,4 +99,19 @@ export function weekDays(monday: string): string[] {
     throw new Error(`${monday} isn't a Monday in YYYY-MM-DD form`);
   }
   return [1, 2, 3].map((offset) => new Date(start.getTime() + offset * 86400000).toISOString().slice(0, 10));
+}
+
+// A week stays in the window until its Thursday has passed: this week and the next 8.
+export function windowMondays(today: string, weeksAhead = 8): string[] {
+  const day = new Date(`${today}T00:00:00Z`);
+  const sinceMonday = (day.getUTCDay() + 6) % 7;
+  const monday = new Date(day.getTime() - sinceMonday * 86400000);
+  const first = sinceMonday > 3 ? monday.getTime() + 7 * 86400000 : monday.getTime();
+  return Array.from({ length: weeksAhead + 1 }, (_, i) => new Date(first + i * 7 * 86400000).toISOString().slice(0, 10));
+}
+
+// Stops a bad Notion response or a renamed property from emptying the catalog.
+export function removalProblem(activeCount: number, removeCount: number): string | null {
+  if (removeCount >= 3 && removeCount > activeCount / 2) return `This would remove ${removeCount} of ${activeCount} active events.`;
+  return null;
 }

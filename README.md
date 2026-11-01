@@ -7,7 +7,7 @@ I built dew because good events kept selling out before I got around to choosing
 ## How it works
 
 1. **Source:** events go into a Notion database, which stays the place they're reviewed.
-2. **Sync:** a script copies a week's events to Postgres, shrinks their posters and marks the week ready.
+2. **Sync:** a daily job copies the next few weeks of events to Postgres and shrinks their posters. Weeks stay open, so new events keep arriving until something is booked.
 3. **Review:** answer No, Maybe or Yes on each event, rank your yeses, and commit to at least one.
 4. **Plan:** the saved week shows your plan and backups, and tracks whether each commitment is booked or waitlisted.
 
@@ -31,13 +31,15 @@ npm run dev
 
 On a Mac, keep the repo outside `~/Documents` and `~/Desktop` if those sync to iCloud, because that can make Next.js commands hang.
 
-## Load a week from Notion
+## Load events from Notion
+
+Add `SUPABASE_SECRET_KEY` and `NOTION_TOKEN` to `.env.local`, then:
 
 ```bash
-npm run sync -- 2026-11-30
+npm run sync
 ```
 
-This copies the Tuesday to Thursday events and their posters, and marks the week ready. It's safe to run again.
+This copies the Tuesday to Thursday events for this week and the next 8, along with any new posters. It's safe to run again, and it only touches the catalog, never anyone's choices. In production, `.github/workflows/sync.yml` runs it daily.
 
 ## Test
 

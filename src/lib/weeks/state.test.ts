@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { answerEvent, bookingLine, buildState, commitEvent, diffStates, hasChoices, isDecided, moveEvent, noChanges, planIds, setBooking } from "./state.ts";
+import { answerEvent, bookingLine, buildState, commitEvent, diffStates, hasChoices, isDecided, isLocked, isPast, moveEvent, noChanges, planIds, setBooking, toReview, weekStatus } from "./state.ts";
 import { EMPTY_STATE, type WeekState } from "./types.ts";
 
 const state = (over: Partial<WeekState> = {}): WeekState => ({ ...EMPTY_STATE, ...over });
@@ -109,4 +109,36 @@ test("a full reset deletes every answer and commitment", () => {
   assert.deepEqual(c.planDeletes, ["a"]);
   assert.deepEqual(c.responseDeletes.sort(), ["a", "b"]);
   assert.deepEqual(c.week, { is_saved: false, is_skipped: false });
+});
+
+test("a week is past only after its Sunday", () => {
+  assert.equal(isPast("2026-11-02", "2026-11-08"), false);
+  assert.equal(isPast("2026-11-02", "2026-11-09"), true);
+});
+
+test("any booked commitment locks a week, and removing it reopens the week", () => {
+  const waitlist = state({ ranking: ["a", "b"], plan: { a: { booking: "waitlist" }, b: { booking: null } } });
+  assert.equal(isLocked(waitlist), false);
+  const booked = setBooking(waitlist, "b", "booked");
+  assert.equal(isLocked(booked), true);
+  assert.equal(isLocked(setBooking(booked, "b", "booked")), false);
+});
+
+test("weekStatus takes the first state that applies", () => {
+  const today = "2026-11-03";
+  const start = "2026-11-02";
+  const booked = state({ saved: true, ranking: ["a"], plan: { a: { booking: "booked" } } });
+  const notBooked = state({ saved: true, ranking: ["a"], plan: { a: { booking: null } } });
+  assert.equal(weekStatus(start, "2026-11-09", true, { ...booked, skipped: true }), "past");
+  assert.equal(weekStatus(start, today, true, { ...booked, skipped: true }), "skipped");
+  assert.equal(weekStatus(start, today, true, booked), "locked");
+  assert.equal(weekStatus(start, today, true, notBooked), "decided");
+  assert.equal(weekStatus(start, today, true, state()), "review");
+  assert.equal(weekStatus(start, today, true, { ...notBooked, plan: {} }), "review");
+  assert.equal(weekStatus(start, today, false, state()), "notReady");
+});
+
+test("toReview finds unanswered events that are still listed", () => {
+  const events = [{ id: "a", removed: false }, { id: "b", removed: false }, { id: "c", removed: true }];
+  assert.deepEqual(toReview(events, state({ answers: { a: "no" } })).map((e) => e.id), ["b"]);
 });

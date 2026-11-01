@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test scripts/lib/*.test.ts src/lib/weeks/*.test.ts",
-    "sync": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env.local scripts/sync-notion.ts",
+    "sync": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local scripts/sync-notion.ts",
     "e2e": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --env-file=.env.local e2e/run.mjs"
   },
   "dependencies": {

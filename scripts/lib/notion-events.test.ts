@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseTime, toEventRow, weekDays, type NotionPage } from "./notion-events.ts";
+import { parseTime, removalProblem, toEventRow, weekDays, windowMondays, type NotionPage } from "./notion-events.ts";
 
 test("parseTime reads the formats in Notion", () => {
   assert.equal(parseTime("7:00 PM"), "19:00");
@@ -19,6 +19,7 @@ test("parseTime reads the formats in Notion", () => {
 const rich = (value: string) => ({ rich_text: [{ plain_text: value }] });
 const fullPage: NotionPage = {
   id: "11111111-2222-3333-4444-555555555555",
+  last_edited_time: "2026-11-01T20:00:00.000Z",
   properties: {
     Name: { title: [{ plain_text: "Issadora " }, { plain_text: "Ava" }] },
     Date: { date: { start: "2026-11-03" } },
@@ -57,6 +58,7 @@ test("toEventRow maps every field", () => {
     availability: "Available",
     link: "https://example.com/show",
     description: "Indie pop.",
+    notion_edited_at: "2026-11-01T20:00:00.000Z",
   });
   assert.deepEqual(poster, { url: "https://files.example.com/a/b/poster.jpg?signature=abc", source: "/a/b/poster.jpg" });
 });
@@ -72,7 +74,7 @@ test("toEventRow keeps a row with gaps and warns about them", () => {
   assert.equal(row?.event_date, "2026-11-03");
   assert.equal(row?.start_time, null);
   assert.equal(poster, null);
-  assert.equal(warnings.length, 3);
+  assert.equal(warnings.length, 2);
 });
 
 test("toEventRow skips a row with no name or date", () => {
@@ -84,4 +86,26 @@ test("weekDays gives Tuesday to Thursday and rejects anything but a Monday", () 
   assert.deepEqual(weekDays("2026-11-30"), ["2026-12-01", "2026-12-02", "2026-12-03"]);
   assert.throws(() => weekDays("2026-12-01"));
   assert.throws(() => weekDays("soon"));
+});
+
+test("windowMondays covers this week and the next 8", () => {
+  const monday = windowMondays("2026-11-02");
+  assert.equal(monday.length, 9);
+  assert.equal(monday[0], "2026-11-02");
+  assert.equal(monday[8], "2026-12-28");
+  assert.equal(windowMondays("2026-11-05")[0], "2026-11-02");
+});
+
+test("a week leaves the window once its Thursday has passed", () => {
+  assert.equal(windowMondays("2026-11-06")[0], "2026-11-09");
+  assert.equal(windowMondays("2026-11-01")[0], "2026-11-02");
+  assert.equal(windowMondays("2026-11-08")[0], "2026-11-09");
+});
+
+test("removalProblem stops large removals only", () => {
+  assert.equal(removalProblem(40, 3), null);
+  assert.equal(removalProblem(40, 20), null);
+  assert.notEqual(removalProblem(40, 21), null);
+  assert.equal(removalProblem(2, 2), null);
+  assert.notEqual(removalProblem(4, 3), null);
 });
