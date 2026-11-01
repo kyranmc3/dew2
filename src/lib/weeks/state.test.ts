@@ -1,0 +1,112 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { answerEvent, bookingLine, buildState, commitEvent, diffStates, hasChoices, isDecided, moveEvent, noChanges, planIds, setBooking } from "./state.ts";
+import { EMPTY_STATE, type WeekState } from "./types.ts";
+
+const state = (over: Partial<WeekState> = {}): WeekState => ({ ...EMPTY_STATE, ...over });
+
+test("Yes adds to the end of the shortlist, and answering again clears it", () => {
+  let s = answerEvent(state(), "a", "yes");
+  s = answerEvent(s, "b", "yes");
+  assert.deepEqual(s.ranking, ["a", "b"]);
+  s = answerEvent(s, "a", "yes");
+  assert.deepEqual(s.ranking, ["b"]);
+  assert.equal(s.answers.a, undefined);
+});
+
+test("moving off Yes removes the rank and the commitment", () => {
+  let s = commitEvent(answerEvent(state(), "a", "yes"), "a");
+  s = answerEvent(s, "a", "no");
+  assert.deepEqual(s.ranking, []);
+  assert.deepEqual(s.plan, {});
+  assert.equal(s.answers.a, "no");
+});
+
+test("moveEvent reorders and stops at the ends", () => {
+  const s = state({ ranking: ["a", "b"] });
+  assert.deepEqual(moveEvent(s, "b", -1).ranking, ["b", "a"]);
+  assert.equal(moveEvent(s, "a", -1), s);
+});
+
+test("booking toggles, and a commitment starts not booked", () => {
+  let s = commitEvent(state({ ranking: ["a"] }), "a");
+  assert.equal(s.plan.a.booking, null);
+  s = setBooking(s, "a", "booked");
+  assert.equal(s.plan.a.booking, "booked");
+  s = setBooking(s, "a", "waitlist");
+  assert.equal(s.plan.a.booking, "waitlist");
+  s = setBooking(s, "a", "waitlist");
+  assert.equal(s.plan.a.booking, null);
+});
+
+test("the plan follows shortlist order", () => {
+  const s = state({ ranking: ["c", "a", "b"], plan: { a: { booking: null }, c: { booking: null } } });
+  assert.deepEqual(planIds(s), ["c", "a"]);
+});
+
+test("a saved week with nothing committed isn't decided", () => {
+  assert.equal(isDecided(state({ saved: true })), false);
+  assert.equal(isDecided(state({ saved: true, ranking: ["a"], plan: { a: { booking: null } } })), true);
+  assert.equal(hasChoices(state()), false);
+  assert.equal(hasChoices(state({ answers: { a: "no" } })), true);
+});
+
+test("bookingLine says the status or counts", () => {
+  const one = (booking: "booked" | "waitlist" | null) => state({ ranking: ["a"], plan: { a: { booking } } });
+  assert.equal(bookingLine(one(null)), "Not booked");
+  assert.equal(bookingLine(one("booked")), "Booked");
+  assert.equal(bookingLine(one("waitlist")), "Waitlist");
+  const three = state({ ranking: ["a", "b", "c"], plan: { a: { booking: "waitlist" }, b: { booking: "booked" }, c: { booking: null } } });
+  assert.equal(bookingLine(three), "1 booked, 1 not booked, 1 on waitlist");
+});
+
+test("buildState orders by rank and drops events no longer in the catalog", () => {
+  const s = buildState(
+    new Set(["a", "b"]),
+    [
+      { event_id: "a", answer: "yes", shortlist_rank: 2 },
+      { event_id: "b", answer: "yes", shortlist_rank: 1 },
+      { event_id: "gone", answer: "yes", shortlist_rank: 3 },
+    ],
+    [{ event_id: "gone", booking: null }, { event_id: "a", booking: "booked" }],
+    { is_saved: true, is_skipped: false },
+  );
+  assert.deepEqual(s.ranking, ["b", "a"]);
+  assert.deepEqual(Object.keys(s.answers).sort(), ["a", "b"]);
+  assert.deepEqual(s.plan, { a: { booking: "booked" } });
+  assert.equal(s.saved, true);
+});
+
+test("buildState copes with no week row", () => {
+  assert.deepEqual(buildState(new Set(), [], [], null), EMPTY_STATE);
+});
+
+test("diffStates writes only what changed", () => {
+  const before = state({ answers: { a: "yes", b: "yes", c: "maybe" }, ranking: ["a", "b"], plan: { a: { booking: null } } });
+  assert.equal(noChanges(diffStates(before, before)), true);
+
+  const moved = diffStates(before, moveEvent(before, "b", -1));
+  assert.deepEqual(moved.responseUpserts.map((r) => [r.event_id, r.shortlist_rank]), [["a", 2], ["b", 1]]);
+  assert.deepEqual(moved.planUpserts, []);
+
+  const booked = diffStates(before, setBooking(before, "a", "booked"));
+  assert.deepEqual(booked.planUpserts, [{ event_id: "a", booking: "booked" }]);
+  assert.deepEqual(booked.responseUpserts, []);
+
+  const no = diffStates(before, answerEvent(before, "a", "no"));
+  assert.deepEqual(no.planDeletes, ["a"]);
+  assert.deepEqual(no.responseUpserts.map((r) => [r.event_id, r.answer, r.shortlist_rank]), [["a", "no", null], ["b", "yes", 1]]);
+
+  const cleared = diffStates(before, answerEvent(before, "c", "maybe"));
+  assert.deepEqual(cleared.responseDeletes, ["c"]);
+
+  assert.deepEqual(diffStates(before, { ...before, saved: true }).week, { is_saved: true, is_skipped: false });
+});
+
+test("a full reset deletes every answer and commitment", () => {
+  const before = state({ answers: { a: "yes", b: "no" }, ranking: ["a"], plan: { a: { booking: "booked" } }, saved: true });
+  const c = diffStates(before, EMPTY_STATE);
+  assert.deepEqual(c.planDeletes, ["a"]);
+  assert.deepEqual(c.responseDeletes.sort(), ["a", "b"]);
+  assert.deepEqual(c.week, { is_saved: false, is_skipped: false });
+});
