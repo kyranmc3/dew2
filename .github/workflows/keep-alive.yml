@@ -1,0 +1,37 @@
+# GitHub turns off scheduled workflows in a public repo after 60 days without activity.
+# This adds an empty commit once the repo has been quiet for 30 days, so the sync keeps running.
+name: Keep scheduled jobs active
+
+on:
+  schedule:
+    - cron: "0 11 1 * *" # the 1st of each month
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Commit even if the repo has been active recently
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Commit if the repo has been quiet
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          age=$(( ($(date +%s) - $(git log -1 --format=%ct)) / 86400 ))
+          if [ "$age" -lt 30 ] && [ "$FORCE" != "true" ]; then
+            echo "Last commit was $age days ago, so there's nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "Keep scheduled jobs active"
+          git push
+          echo "Last commit was $age days ago, so this added an empty commit."
