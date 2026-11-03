@@ -51,6 +51,34 @@ export function relativeWeek(monday: string, today: string) {
 export const todayInNewYork = (now = new Date()) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
 
+const DEFAULT_LENGTH = 2 * 3600000;
+
+// Times are New York wall-clock times, and the link says so, so the device's time zone
+// doesn't matter. UTC is only used here to do the date arithmetic.
+export function googleCalendarUrl(e: Pick<WeekEvent, "name" | "date" | "startTime" | "endTime" | "place" | "link">) {
+  const stamp = (d: Date, length: number) => d.toISOString().slice(0, length).replace(/[-:]/g, "");
+  let dates: string;
+  if (e.startTime) {
+    const start = new Date(`${e.date}T${e.startTime}Z`);
+    let end = e.endTime ? new Date(`${e.date}T${e.endTime}Z`) : start;
+    // An end time earlier than the start is after midnight.
+    if (end < start) end = new Date(end.getTime() + 86400000);
+    if (end.getTime() === start.getTime()) end = new Date(start.getTime() + DEFAULT_LENGTH);
+    dates = `${stamp(start, 19)}/${stamp(end, 19)}`;
+  } else {
+    // An all-day event ends on the following day.
+    dates = `${stamp(toDate(e.date), 10)}/${stamp(new Date(toDate(e.date).getTime() + 86400000), 10)}`;
+  }
+  const details = [!e.startTime && "Time not listed", e.link].filter(Boolean).join("\n\n");
+  const params = [
+    ["text", e.name],
+    ["location", e.place],
+    ["details", details],
+  ].filter(([, value]) => value);
+  const query = params.map(([key, value]) => `&${key}=${encodeURIComponent(value)}`).join("");
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&dates=${dates}&ctz=America/New_York${query}`;
+}
+
 export function checkedOn(iso: string) {
   return new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }).format(new Date(iso));
 }

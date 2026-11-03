@@ -216,6 +216,8 @@ async function main() {
   check("answering them clears the banner", !(await ev(`!!document.getElementById('review-banner')`)));
   await go("/"); check("and clears the home prompt", !(await row("2026-11-02")).includes("to review"));
   await go("/weeks/2026-11-02"); check("plan cards show the checked date", /Checked \w+ \d+/.test(await ev(`document.querySelector('.plan-card').innerText`)));
+  check("every plan card links to Google Calendar", await ev(`[...document.querySelectorAll('.plan-card')].every(c=>{const a=c.querySelector('a.calendar-link');return a&&a.target==='_blank'&&a.textContent==='Add to Google Calendar'&&a.href.startsWith('https://calendar.google.com/calendar/render?action=TEMPLATE')})`));
+  check("All Options has no calendar link", !(await ev(`!!document.querySelector('#your-week .calendar-link')`)));
 
   // ---------- events removed from Notion ----------
   must(await admin.from("events").insert([
@@ -230,6 +232,7 @@ async function main() {
   await go("/weeks/2026-11-16"); t = await text();
   check("a removed committed event stays on the plan", t.includes("E2E Removed Event") && t.includes("No longer listed"));
   check("its booking buttons still work", await ev(`!!document.querySelector('#plan-${REMOVED} .booked-btns button')`));
+  check("it can still be added to Google Calendar", await ev(`!!document.querySelector('#plan-${REMOVED} .calendar-link')`));
   check("a removed uncommitted event is hidden", !t.includes("E2E Hidden Event"));
   check("a removed event isn't up for review", !(await ev(`!!document.getElementById('review-banner')`)));
   check("a missing poster doesn't break the page", await ev(`!!document.querySelector('#plan-${REMOVED} .no-poster')`));
@@ -251,6 +254,7 @@ async function main() {
   await click("Past Weeks"); await sleep(1000); check("menu opens past weeks", (await ev(`location.pathname`)) === "/past-weeks");
   await ev(`document.getElementById('week-2026-10-05').click()`); await sleep(1200); t = await text();
   check("a past week is read-only", t.includes("E2E Past Decided") && !t.includes("Change my answers") && !t.includes("Booked?") && !t.includes("Checked") && t.includes("← Past weeks"), t.slice(0, 200));
+  check("a past week has no calendar link", !t.includes("Add to Google Calendar"));
   await click("← Past weeks"); await sleep(1000); check("back goes to past weeks", (await ev(`location.pathname`)) === "/past-weeks");
   await go("/weeks/2026-09-28"); t = await text(); check("a skipped past week can't be unskipped", t.includes("You skipped this week") && !t.includes("Review this week"));
   await go("/weeks/2026-09-21"); t = await text(); check("a past week without a plan says so", t.includes("You didn't save a plan") && t.includes("E2E Past Partial") && !t.includes("Are you interested?"), t.slice(0, 200));
