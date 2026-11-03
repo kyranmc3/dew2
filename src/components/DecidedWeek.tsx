@@ -1,22 +1,22 @@
 import { backupTag, checkedOn, dayLabel, googleCalendarUrl, priceText, shortDate, timeText, weekLabel, weekRange } from "@/lib/weeks/format";
-import { isLocked, planIds, setBooking, toReview } from "@/lib/weeks/state";
+import { hasPassed, isLocked, planIds, setBooking, toReview } from "@/lib/weeks/state";
 import type { WeekEvent, WeekInfo, WeekState } from "@/lib/weeks/types";
 import { AvailabilityTag, BookingTag, ExternalLink, Poster, Tag } from "./parts";
 import type { WeekActions } from "./WeekView";
 
-type Props = { week: WeekInfo; events: WeekEvent[]; state: WeekState; readOnly: boolean; actions: WeekActions };
+type Props = { week: WeekInfo; events: WeekEvent[]; state: WeekState; readOnly: boolean; actions: WeekActions; today: string };
 
 const BOOK_OPTIONS = [
   { value: "booked", label: "Yes", on: "on-booked", name: "Booked" },
   { value: "waitlist", label: "Waitlist", on: "on-waitlist", name: "Waitlist" },
 ] as const;
 
-export default function DecidedWeek({ week, events, state, readOnly, actions }: Props) {
+export default function DecidedWeek({ week, events, state, readOnly, actions, today }: Props) {
   const byId = new Map(events.map((e) => [e.id, e]));
   const saidNo = events.filter((e) => state.answers[e.id] === "no");
   const plan = planIds(state);
   // A past or locked week doesn't ask for attention.
-  const waiting = readOnly || isLocked(state) ? [] : toReview(events, state);
+  const waiting = readOnly || isLocked(state) ? [] : toReview(events, state, today);
   const isWaiting = new Set(waiting.map((e) => e.id));
   return (
     <div className="wrap page" style={{ gap: 26 }}>
@@ -53,8 +53,10 @@ export default function DecidedWeek({ week, events, state, readOnly, actions }: 
             {plan.map((id) => {
               const e = byId.get(id)!;
               const booking = state.plan[id].booking;
+              // A passed day is greyed out and can't change, like a past week.
+              const fixed = readOnly || hasPassed(e.date, today);
               return (
-                <article className="plan-card" id={`plan-${e.id}`} key={e.id}>
+                <article className={`plan-card${!readOnly && fixed ? " passed" : ""}`} id={`plan-${e.id}`} key={e.id}>
                   <div className="plan-img">
                     <Poster event={e} alt={`${e.name} poster`} />
                   </div>
@@ -62,14 +64,14 @@ export default function DecidedWeek({ week, events, state, readOnly, actions }: 
                     <div className="tags" style={{ marginTop: 0 }}>
                       <BookingTag booking={booking} large />
                       {e.removed && <Tag kind="sold" large>No longer listed</Tag>}
-                      {!e.removed && !booking && !readOnly && <AvailabilityTag avail={e.avail} />}
+                      {!e.removed && !booking && !fixed && <AvailabilityTag avail={e.avail} />}
                     </div>
                     <h3 style={{ fontSize: 24 }}>{e.name}</h3>
                     <div style={{ fontWeight: 800 }}>
                       {shortDate(e.date)}, {timeText(e)} · {priceText(e.price)}
                     </div>
                     <div className="small muted">{e.place}</div>
-                    {!readOnly && !e.removed && e.checkedAt && <div className="checked">Checked {checkedOn(e.checkedAt)}</div>}
+                    {!fixed && !e.removed && e.checkedAt && <div className="checked">Checked {checkedOn(e.checkedAt)}</div>}
                     {!readOnly && (
                       <div className="booked-ask">
                         <span style={{ fontWeight: 800 }}>Booked?</span>
@@ -81,6 +83,7 @@ export default function DecidedWeek({ week, events, state, readOnly, actions }: 
                               className={`btn${booking === o.value ? ` ${o.on}` : ""}`}
                               aria-pressed={booking === o.value}
                               aria-label={`${o.name}: ${e.name}`}
+                              disabled={fixed}
                               onClick={() => actions.change((s) => setBooking(s, e.id, o.value))}
                             >
                               {o.label}
@@ -89,10 +92,10 @@ export default function DecidedWeek({ week, events, state, readOnly, actions }: 
                         </div>
                       </div>
                     )}
-                    {(e.link || !readOnly) && (
+                    {(e.link || !fixed) && (
                       <div className="small" style={{ marginTop: "auto", paddingTop: 4, display: "flex", flexWrap: "wrap", gap: "8px 16px" }}>
                         {e.link && <ExternalLink href={e.link}>Full listing</ExternalLink>}
-                        {!readOnly && <ExternalLink href={googleCalendarUrl(e)} className="link calendar-link">Add to Google Calendar</ExternalLink>}
+                        {!fixed && <ExternalLink href={googleCalendarUrl(e)} className="link calendar-link">Add to Google Calendar</ExternalLink>}
                       </div>
                     )}
                   </div>
@@ -110,9 +113,11 @@ export default function DecidedWeek({ week, events, state, readOnly, actions }: 
         <div className="days">
           {week.days.map((date) => {
             const kept = events.filter((e) => e.date === date && ((state.answers[e.id] && state.answers[e.id] !== "no") || isWaiting.has(e.id)));
+            const passed = !readOnly && hasPassed(date, today);
             return (
-              <div className="day" id={`day-${date}`} key={date}>
+              <div className={`day${passed ? " passed" : ""}`} id={`day-${date}`} key={date}>
                 <h3 className="day-title">{dayLabel(date)}</h3>
+                {passed && <p className="small muted passed-note">This day has passed</p>}
                 {kept.map((e) => {
                   const entry = state.plan[e.id];
                   const rank = state.ranking.indexOf(e.id);
@@ -130,7 +135,7 @@ export default function DecidedWeek({ week, events, state, readOnly, actions }: 
                           {entry ? <BookingTag booking={entry.booking} /> : rank >= 0 ? <Tag kind="rank">Ranked #{rank + 1}</Tag> : null}
                           {backup && <Tag kind="backup">{backup}</Tag>}
                           {e.removed && <Tag kind="sold">No longer listed</Tag>}
-                          {!e.removed && !entry?.booking && !readOnly && <AvailabilityTag avail={e.avail} />}
+                          {!e.removed && !entry?.booking && !readOnly && !passed && <AvailabilityTag avail={e.avail} />}
                         </div>
                       </div>
                     </div>

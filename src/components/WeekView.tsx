@@ -127,7 +127,7 @@ export default function WeekView({ week, events, today, userId, initial }: Props
     },
   };
 
-  const props = { week, events, state, actions };
+  const props = { week, events, state, actions, today };
   return (
     <>
       {state.skipped ? (

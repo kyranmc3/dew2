@@ -47,9 +47,10 @@ export function relativeWeek(monday: string, today: string) {
   return `In ${weeks} week${weeks === 1 ? "" : "s"}`;
 }
 
-// Today in New York, where the app's one user is, wherever the server runs.
-export const todayInNewYork = (now = new Date()) =>
-  new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now);
+// Today in New York, where the app's one user is, wherever the server runs. DEW_TODAY
+// pins it for the end-to-end test, and is never set on Vercel.
+export const todayInNewYork = (now?: Date) =>
+  now || !process.env.DEW_TODAY ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(now ?? new Date()) : process.env.DEW_TODAY;
 
 const DEFAULT_LENGTH = 2 * 3600000;
 

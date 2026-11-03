@@ -101,13 +101,14 @@ export function weekDays(monday: string): string[] {
   return [1, 2, 3].map((offset) => new Date(start.getTime() + offset * 86400000).toISOString().slice(0, 10));
 }
 
-// This week and the next 8. The new week starts on Sunday, the day before its Monday.
+// This week and the next 8. On Sunday the coming week is added a day early, and this
+// week stays until its Monday rolls around, so the window briefly holds one extra week.
 export function windowMondays(today: string, weeksAhead = 8): string[] {
   const day = new Date(`${today}T00:00:00Z`);
   const sinceMonday = (day.getUTCDay() + 6) % 7;
-  const monday = new Date(day.getTime() - sinceMonday * 86400000);
-  const first = sinceMonday === 6 ? monday.getTime() + 7 * 86400000 : monday.getTime();
-  return Array.from({ length: weeksAhead + 1 }, (_, i) => new Date(first + i * 7 * 86400000).toISOString().slice(0, 10));
+  const monday = day.getTime() - sinceMonday * 86400000;
+  const length = weeksAhead + (sinceMonday === 6 ? 2 : 1);
+  return Array.from({ length }, (_, i) => new Date(monday + i * 7 * 86400000).toISOString().slice(0, 10));
 }
 
 // Stops a bad Notion response or a renamed property from emptying the catalog.

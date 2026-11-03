@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { answerEvent, bookingLine, buildState, commitEvent, diffStates, hasChoices, isDecided, isLocked, isPast, moveEvent, noChanges, planIds, setBooking, toReview, weekStatus } from "./state.ts";
+import { answerEvent, bookingLine, buildState, commitEvent, countable, diffStates, hasChoices, hasPassed, isDecided, isLocked, isPast, moveEvent, noChanges, planIds, resetWeek, setBooking, toReview, weekStatus } from "./state.ts";
 import { EMPTY_STATE, type WeekState } from "./types.ts";
 
 const state = (over: Partial<WeekState> = {}): WeekState => ({ ...EMPTY_STATE, ...over });
@@ -111,9 +111,29 @@ test("a full reset deletes every answer and commitment", () => {
   assert.deepEqual(c.week, { is_saved: false, is_skipped: false });
 });
 
-test("a week becomes past on its Sunday", () => {
+test("a week stays current through its Sunday and becomes past on the Monday after", () => {
   assert.equal(isPast("2026-11-02", "2026-11-07"), false);
-  assert.equal(isPast("2026-11-02", "2026-11-08"), true);
+  assert.equal(isPast("2026-11-02", "2026-11-08"), false);
+  assert.equal(isPast("2026-11-02", "2026-11-09"), true);
+});
+
+test("a day passes once it's over, and today stays open", () => {
+  assert.equal(hasPassed("2026-11-03", "2026-11-04"), true);
+  assert.equal(hasPassed("2026-11-04", "2026-11-04"), false);
+  assert.equal(hasPassed("2026-11-05", "2026-11-04"), false);
+});
+
+test("resetting a week keeps choices on days that have passed", () => {
+  const events = [{ id: "tue", date: "2026-11-03" }, { id: "wed", date: "2026-11-04" }, { id: "thu", date: "2026-11-05" }];
+  const before = state({
+    answers: { tue: "yes", wed: "yes", thu: "no" },
+    ranking: ["wed", "tue"],
+    plan: { tue: { booking: "booked" }, wed: { booking: null } },
+    saved: true,
+  });
+  assert.deepEqual(resetWeek(before, events, "2026-11-04"), state({ answers: { tue: "yes" }, ranking: ["tue"], plan: { tue: { booking: "booked" } } }));
+  assert.deepEqual(resetWeek(before, events, "2026-11-02"), EMPTY_STATE);
+  assert.deepEqual(resetWeek({ ...before, saved: false, skipped: true }, events, "2026-11-02"), EMPTY_STATE);
 });
 
 test("any booked commitment locks a week, and removing it reopens the week", () => {
@@ -138,7 +158,18 @@ test("weekStatus takes the first state that applies", () => {
   assert.equal(weekStatus(start, today, false, state()), "notReady");
 });
 
-test("toReview finds unanswered events that are still listed", () => {
-  const events = [{ id: "a", removed: false }, { id: "b", removed: false }, { id: "c", removed: true }];
-  assert.deepEqual(toReview(events, state({ answers: { a: "no" } })).map((e) => e.id), ["b"]);
+test("toReview finds unanswered events that are still listed and still open", () => {
+  const events = [
+    { id: "a", date: "2026-11-04", removed: false },
+    { id: "b", date: "2026-11-04", removed: false },
+    { id: "c", date: "2026-11-04", removed: true },
+    { id: "d", date: "2026-11-03", removed: false },
+  ];
+  assert.deepEqual(toReview(events, state({ answers: { a: "no" } }), "2026-11-04").map((e) => e.id), ["b"]);
+  assert.deepEqual(toReview(events, state({ answers: { a: "no" } }), "2026-11-02").map((e) => e.id), ["b", "d"]);
+});
+
+test("progress counts answered events and open ones, not unanswered passed ones", () => {
+  const events = [{ id: "a", date: "2026-11-03" }, { id: "b", date: "2026-11-03" }, { id: "c", date: "2026-11-04" }];
+  assert.deepEqual(countable(events, state({ answers: { a: "yes" } }), "2026-11-04").map((e) => e.id), ["a", "c"]);
 });

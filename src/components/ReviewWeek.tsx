@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { checkedOn, dayLabel, priceText, shortDate, timeText, weekLabel, weekRange } from "@/lib/weeks/format";
-import { answerEvent, canSave, commitEvent, hasChoices, moveEvent } from "@/lib/weeks/state";
-import { EMPTY_STATE, type Answer, type WeekEvent, type WeekInfo, type WeekState } from "@/lib/weeks/types";
+import { answerEvent, canSave, commitEvent, countable, hasChoices, hasPassed, moveEvent, resetWeek } from "@/lib/weeks/state";
+import type { Answer, WeekEvent, WeekInfo, WeekState } from "@/lib/weeks/types";
 import MoreMenu from "./MoreMenu";
 import { AvailabilityTag, ExternalLink, Poster, Tag } from "./parts";
 import type { WeekActions } from "./WeekView";
 
-type Props = { week: WeekInfo; events: WeekEvent[]; state: WeekState; actions: WeekActions };
+type Props = { week: WeekInfo; events: WeekEvent[]; state: WeekState; actions: WeekActions; today: string };
 
 const ANSWERS: { value: Answer; label: string }[] = [
   { value: "no", label: "No" },
@@ -16,7 +16,7 @@ const ANSWERS: { value: Answer; label: string }[] = [
   { value: "yes", label: "Yes" },
 ];
 
-function EventCard({ event: e, state, actions }: { event: WeekEvent; state: WeekState; actions: WeekActions }) {
+function EventCard({ event: e, state, actions, passed }: { event: WeekEvent; state: WeekState; actions: WeekActions; passed: boolean }) {
   const current = state.answers[e.id];
   return (
     <article className={`card${current ? ` a-${current}` : ""}`} id={`event-${e.id}`}>
@@ -46,6 +46,7 @@ function EventCard({ event: e, state, actions }: { event: WeekEvent; state: Week
               type="button"
               className={`btn${current === a.value ? ` on-${a.value}` : ""}`}
               aria-pressed={current === a.value}
+              disabled={passed}
               onClick={() => actions.change((s) => answerEvent(s, e.id, a.value))}
             >
               {a.label}
@@ -57,10 +58,10 @@ function EventCard({ event: e, state, actions }: { event: WeekEvent; state: Week
   );
 }
 
-function ShortlistRow({ event: e, index, state, actions }: { event: WeekEvent; index: number; state: WeekState; actions: WeekActions }) {
+function ShortlistRow({ event: e, index, state, actions, passed }: { event: WeekEvent; index: number; state: WeekState; actions: WeekActions; passed: boolean }) {
   const committed = !!state.plan[e.id];
   return (
-    <div className="pick" id={`pick-${e.id}`}>
+    <div className={`pick${passed ? " passed" : ""}`} id={`pick-${e.id}`}>
       <div className="pick-top">
         <span className="heading pick-rank">{index + 1}</span>
         <Poster event={e} alt="" />
@@ -74,7 +75,7 @@ function ShortlistRow({ event: e, index, state, actions }: { event: WeekEvent; i
               <Tag kind="sold">No longer listed</Tag>
             </>
           )}
-          {!e.removed && e.checkedAt && (
+          {!e.removed && !passed && e.checkedAt && (
             <>
               <br />
               <span className="checked">Checked {checkedOn(e.checkedAt)}</span>
@@ -82,10 +83,10 @@ function ShortlistRow({ event: e, index, state, actions }: { event: WeekEvent; i
           )}
         </span>
         <div className="arrows">
-          <button type="button" className="btn" disabled={index === 0} aria-label={`Move ${e.name} up`} onClick={() => actions.change((s) => moveEvent(s, e.id, -1))}>
+          <button type="button" className="btn" disabled={passed || index === 0} aria-label={`Move ${e.name} up`} onClick={() => actions.change((s) => moveEvent(s, e.id, -1))}>
             ↑
           </button>
-          <button type="button" className="btn" disabled={index === state.ranking.length - 1} aria-label={`Move ${e.name} down`} onClick={() => actions.change((s) => moveEvent(s, e.id, 1))}>
+          <button type="button" className="btn" disabled={passed || index === state.ranking.length - 1} aria-label={`Move ${e.name} down`} onClick={() => actions.change((s) => moveEvent(s, e.id, 1))}>
             ↓
           </button>
         </div>
@@ -96,11 +97,12 @@ function ShortlistRow({ event: e, index, state, actions }: { event: WeekEvent; i
           className={`btn${committed ? " on-commit" : ""}`}
           aria-pressed={committed}
           aria-label={`Commit: ${e.name}`}
+          disabled={passed}
           onClick={() => actions.change((s) => commitEvent(s, e.id))}
         >
           {committed ? "Committed" : "Commit"}
         </button>
-        {e.link && (
+        {e.link && !passed && (
           <ExternalLink href={e.link} className="">
             {e.price === 0 ? "Sign up ↗" : "Get tickets ↗"}
           </ExternalLink>
@@ -110,11 +112,11 @@ function ShortlistRow({ event: e, index, state, actions }: { event: WeekEvent; i
   );
 }
 
-export default function ReviewWeek({ week, events, state, actions }: Props) {
+export default function ReviewWeek({ week, events, state, actions, today }: Props) {
   const byId = new Map(events.map((e) => [e.id, e]));
   const answered = events.filter((e) => state.answers[e.id]).length;
   const committed = Object.keys(state.plan).length;
-  const summary = [`${answered} of ${events.length} answered`, `${state.ranking.length} on your shortlist`, committed && `${committed} committed`].filter(Boolean).join(" · ");
+  const summary = [`${answered} of ${countable(events, state, today).length} answered`, `${state.ranking.length} on your shortlist`, committed && `${committed} committed`].filter(Boolean).join(" · ");
   const maybes = events.filter((e) => state.answers[e.id] === "maybe");
 
   // The bar's height changes as it wraps, and the day headers stick right below it.
@@ -153,9 +155,18 @@ export default function ReviewWeek({ week, events, state, actions }: Props) {
   const reset = () => {
     dialogRef.current?.close();
     setSheetOpen(false);
-    actions.change(() => EMPTY_STATE);
+    actions.change((s) => resetWeek(s, events, today));
     actions.stopEditing();
   };
+  // Reset leaves days that have passed alone, so the confirmation only counts the rest.
+  const started = week.days.some((d) => hasPassed(d, today));
+  const bookedToClear = events.filter((e) => state.plan[e.id]?.booking === "booked" && !hasPassed(e.date, today)).length;
+  const resetText = [
+    `Your answers and plan${started ? " from today on" : ""} will be cleared${bookedToClear ? `, including ${bookedToClear} booked. This doesn't cancel any tickets.` : "."}`,
+    started && "Earlier days stay as they are.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <>
@@ -218,22 +229,24 @@ export default function ReviewWeek({ week, events, state, actions }: Props) {
           {week.days.map((date) => {
             const dayEvents = events.filter((e) => e.date === date);
             const saidNo = dayEvents.filter((e) => state.answers[e.id] === "no");
+            const passed = hasPassed(date, today);
             return (
-              <section className="section" id={`day-${date}`} aria-label={dayLabel(date)} key={date}>
+              <section className={`section${passed ? " passed" : ""}`} id={`day-${date}`} aria-label={dayLabel(date)} key={date}>
                 <div className="day-head">
                   <h2 className="section-title">{dayLabel(date)}</h2>
+                  {passed && <p className="small muted passed-note">This day has passed</p>}
                 </div>
                 {dayEvents
                   .filter((e) => state.answers[e.id] !== "no")
                   .map((e) => (
-                    <EventCard key={e.id} event={e} state={state} actions={actions} />
+                    <EventCard key={e.id} event={e} state={state} actions={actions} passed={passed} />
                   ))}
                 {saidNo.map((e) => (
                   <div className="said-no" id={`no-${e.id}`} key={e.id}>
                     <span style={{ minWidth: 0 }}>
                       <b style={{ fontWeight: 800 }}>No:</b> {e.name} · <span className="said-no-time">{e.start ?? "Time not listed"}</span>
                     </span>
-                    <button type="button" className="link" aria-label={`Restore ${e.name}`} onClick={() => actions.change((s) => answerEvent(s, e.id, "no"))}>
+                    <button type="button" className="link" aria-label={`Restore ${e.name}`} disabled={passed} onClick={() => actions.change((s) => answerEvent(s, e.id, "no"))}>
                       Restore
                     </button>
                   </div>
@@ -259,7 +272,7 @@ export default function ReviewWeek({ week, events, state, actions }: Props) {
             </div>
             {state.ranking.map((id, i) => {
               const e = byId.get(id);
-              return e ? <ShortlistRow key={id} event={e} index={i} state={state} actions={actions} /> : null;
+              return e ? <ShortlistRow key={id} event={e} index={i} state={state} actions={actions} passed={hasPassed(e.date, today)} /> : null;
             })}
             {state.ranking.length > 0 && !canSave(state) && <p className="small warn">Commit to at least one to save your plan.</p>}
           </section>
@@ -285,7 +298,7 @@ export default function ReviewWeek({ week, events, state, actions }: Props) {
       >
         <div className="dialog-in">
           <h2 id="confirm-title" style={{ fontSize: 22 }}>Reset this week?</h2>
-          <p>Your answers and plan will be cleared.</p>
+          <p id="reset-text">{resetText}</p>
           <div className="dialog-btns">
             <button type="button" className="btn" id="reset-cancel" autoFocus onClick={() => dialogRef.current?.close()}>
               Cancel

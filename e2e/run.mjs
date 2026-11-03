@@ -4,8 +4,11 @@
 //
 //   npm run build && npm run e2e -- <folder for screenshots>
 //
-// Serve the build first with the test account allowed:
-//   ALLOWED_EMAILS=dew2-e2e@example.com npx next start --port 3400
+// Serve the build first with the test account allowed, pinned to a Monday so nothing in
+// the week of Nov 2 has passed, plus a second server pinned to the Wednesday after, for
+// the checks on days that have passed:
+//   ALLOWED_EMAILS=dew2-e2e@example.com DEW_TODAY=2026-11-02 npx next start --port 3400
+//   ALLOWED_EMAILS=dew2-e2e@example.com DEW_TODAY=2026-11-11 npx next start --port 3401
 //
 // Set E2E_OWNER_EMAIL to your real account, which the suite checks is left untouched.
 
@@ -16,6 +19,7 @@ import { createClient } from "@supabase/supabase-js";
 const outDir = process.argv[2] ?? "/tmp/dew2-e2e";
 mkdirSync(outDir, { recursive: true });
 const BASE = "http://localhost:3400";
+const WEDNESDAY = "http://localhost:3401"; // the same app on Wed, Nov 11
 const EMAIL = "dew2-e2e@example.com";
 const URL_ = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const admin = createClient(URL_, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
@@ -111,7 +115,7 @@ const chrome = spawn("/Applications/Google Chrome.app/Contents/MacOS/Google Chro
 let id = 0, ws; const pending = new Map(), pageErrors = [];
 const send = (method, params = {}) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })); });
 const ev = async (x) => { const r = await send("Runtime.evaluate", { expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
-const go = async (path) => { await send("Page.navigate", { url: BASE + path }); await sleep(1500); };
+const go = async (path, base = BASE) => { await send("Page.navigate", { url: base + path }); await sleep(1500); };
 const shot = async (name) => { const r = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true }); writeFileSync(`${outDir}/${name}.png`, Buffer.from(r.data, "base64")); };
 const text = () => ev(`document.body.innerText`);
 const has = async (t) => (await text()).includes(t);
@@ -432,6 +436,27 @@ async function main() {
   await menu("Reset Choices"); await click("Reset"); await sleep(300);
   await viewport(820, 1100); await go(W); check("tablet uses the sheet too", await ev(`getComputedStyle(document.getElementById('open-sheet')).display!=='none'&&!(${vis})`));
   await viewport(1280, 1250); await go(W); check("desktop hides the sheet button", await ev(`getComputedStyle(document.getElementById('open-sheet')).display==='none'&&${vis}`));
+
+  // ---------- days that have passed, on Wednesday, Nov 11 ----------
+  // Sign-in cookies ignore the port, so the second server shares the session.
+  await go("/", WEDNESDAY); t = await text();
+  check("the week of Nov 2 is past by Nov 11", !t.includes("Week of Nov 2\n") && (await row("2026-11-09")).includes("This week"));
+  await go("/weeks/2026-11-09", WEDNESDAY);
+  const tuesdayPlan = must(await admin.from("events").select("id").eq("event_date", "2026-11-10").in("id", (await db.plan()).map((p) => p.event_id))).map((e) => e.id);
+  check("the week has a plan entry on Tuesday", tuesdayPlan.length > 0);
+  check("Tuesday plan cards are greyed out and locked", await ev(`${JSON.stringify(tuesdayPlan)}.every(id=>{const c=document.getElementById('plan-'+id);return c&&c.classList.contains('passed')&&[...c.querySelectorAll('.booked-btns button')].every(b=>b.disabled)&&!c.querySelector('.calendar-link')&&!c.innerText.includes('Checked')})`));
+  check("later plan cards stay open", await ev(`[...document.querySelectorAll('.plan-card:not(.passed)')].every(c=>[...c.querySelectorAll('.booked-btns button')].every(b=>!b.disabled)&&!!c.querySelector('.calendar-link'))`));
+  check("Tuesday in All Options says it has passed", await ev(`document.getElementById('day-2026-11-10').classList.contains('passed')&&document.getElementById('day-2026-11-10').innerText.includes('This day has passed')&&!document.getElementById('day-2026-11-11').classList.contains('passed')`));
+  await shot("passed-decided");
+  await click("Change my answers");
+  check("Tuesday's answers are disabled", await ev(`(()=>{const b=[...document.querySelectorAll('#day-2026-11-10 .answers button')];return b.length>0&&b.every(x=>x.disabled)})()`));
+  check("Wednesday's answers still work", await ev(`[...document.querySelectorAll('#day-2026-11-11 .answers button')].every(x=>!x.disabled)`));
+  check("Tuesday's Restore links are disabled", await ev(`[...document.querySelectorAll('#day-2026-11-10 .said-no .link')].every(x=>x.disabled)`));
+  check("Tuesday's shortlist entries are locked", await ev(`${JSON.stringify(tuesdayPlan)}.every(id=>{const p=document.getElementById('pick-'+id);return p&&p.classList.contains('passed')&&[...p.querySelectorAll('button')].every(b=>b.disabled)})`));
+  await menu("Reset Choices"); t = await ev(`document.getElementById('reset-text').textContent`);
+  check("reset on a started week only clears today on", t.startsWith("Your answers and plan from today on will be cleared") && t.endsWith("Earlier days stay as they are."), t);
+  await click("Cancel");
+  await shot("passed-review");
 
   // ---------- security and the real data ----------
   const ownerAfter = must(await admin.from("responses").select("event_id, answer, shortlist_rank").eq("user_id", account.source.id));
