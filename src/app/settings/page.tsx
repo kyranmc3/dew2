@@ -1,38 +1,39 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { loadSources } from "@/lib/weeks/data";
+import { isSettled } from "@/lib/weeks/days";
+import { loadSources, loadWeekdays, loadWeekSummaries } from "@/lib/weeks/data";
+import { todayInNewYork, weekLabel } from "@/lib/weeks/format";
+import { hasPassed, isPast } from "@/lib/weeks/state";
+import DaysForm from "./DaysForm";
 
 export const metadata: Metadata = { title: "Settings · dew" };
 
-const DAYS = [
-  { short: "M", full: "Monday" },
-  { short: "T", full: "Tuesday", on: true },
-  { short: "W", full: "Wednesday", on: true },
-  { short: "Th", full: "Thursday", on: true },
-  { short: "F", full: "Friday" },
-  { short: "Sa", full: "Saturday" },
-  { short: "Su", full: "Sunday" },
-];
-
 export default async function SettingsPage() {
-  const sources = await loadSources(await createClient());
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const today = todayInNewYork();
+  const [sources, weekdays, weeks] = await Promise.all([loadSources(supabase), loadWeekdays(supabase), loadWeekSummaries(supabase, today)]);
+  // Settled weeks keep their days, so a change starts at the first week that isn't settled.
+  const open = weeks.filter(({ week, full }) => !isPast(week.start, today) && !isSettled(full));
+  const appliesFrom = open.length ? weekLabel(open[0].week.start).replace("Week of", "the week of") : null;
+  const current = open.find(({ week }) => week.days.some((d) => hasPassed(d, today)));
+  const keepCurrentWeek = current
+    ? { week_start: current.week.start, is_saved: current.full.saved, is_skipped: current.full.skipped, days: current.week.days }
+    : null;
+
   return (
     <div className="wrap page" style={{ gap: 26 }}>
-      <p className="notice" id="settings-locked" role="note">
-        Settings are locked for v1. You can view your days and sources, but can&apos;t change them yet.
-      </p>
       <Link className="link" href="/">← All weeks</Link>
       <h1 className="page-title" style={{ fontSize: 40 }}>Settings</h1>
       <section className="section" id="settings-days">
         <h2 style={{ fontSize: 24 }}>Days</h2>
-        <ul className="pills" aria-label="Days">
-          {DAYS.map((d) => (
-            <li key={d.full} className={d.on ? "on" : ""} aria-label={`${d.full}, ${d.on ? "selected" : "not selected"}`}>
-              {d.short}
-            </li>
-          ))}
-        </ul>
+        <DaysForm userId={user.id} initial={weekdays} appliesFrom={appliesFrom} keepCurrentWeek={keepCurrentWeek} />
       </section>
       <section className="section" id="settings-sources">
         <h2 style={{ fontSize: 24 }}>Sources</h2>
@@ -43,6 +44,7 @@ export default async function SettingsPage() {
             </li>
           ))}
         </ul>
+        <p className="small muted" style={{ margin: 0 }}>Sources can&apos;t be changed yet.</p>
       </section>
     </div>
   );

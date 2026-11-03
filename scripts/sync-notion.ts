@@ -1,4 +1,4 @@
-// Copies every Tuesday to Thursday event in the rolling window from the Notion Activity
+// Copies every event in the rolling window, Monday to Sunday, from the Notion Activity
 // Database to Supabase, and copies new posters to storage. Weeks with events become
 // ready. It only touches the catalog, never anyone's choices. Safe to run again.
 //

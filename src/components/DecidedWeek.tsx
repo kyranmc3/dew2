@@ -1,17 +1,20 @@
+import { useRef } from "react";
 import { backupTag, checkedOn, dayLabel, googleCalendarUrl, priceText, shortDate, timeText, weekLabel, weekRange } from "@/lib/weeks/format";
 import { hasPassed, isLocked, planIds, setBooking, toReview } from "@/lib/weeks/state";
 import type { WeekEvent, WeekInfo, WeekState } from "@/lib/weeks/types";
 import { AvailabilityTag, BookingTag, ExternalLink, Poster, Tag } from "./parts";
+import ResetDialog from "./ResetDialog";
 import type { WeekActions } from "./WeekView";
 
-type Props = { week: WeekInfo; events: WeekEvent[]; state: WeekState; readOnly: boolean; actions: WeekActions; today: string };
+type Props = { week: WeekInfo; events: WeekEvent[]; state: WeekState; readOnly: boolean; actions: WeekActions; today: string; preferencesChanged?: boolean };
 
 const BOOK_OPTIONS = [
   { value: "booked", label: "Yes", on: "on-booked", name: "Booked" },
   { value: "waitlist", label: "Waitlist", on: "on-waitlist", name: "Waitlist" },
 ] as const;
 
-export default function DecidedWeek({ week, events, state, readOnly, actions, today }: Props) {
+export default function DecidedWeek({ week, events, state, readOnly, actions, today, preferencesChanged }: Props) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const byId = new Map(events.map((e) => [e.id, e]));
   const saidNo = events.filter((e) => state.answers[e.id] === "no");
   const plan = planIds(state);
@@ -34,6 +37,15 @@ export default function DecidedWeek({ week, events, state, readOnly, actions, to
           </button>
         )}
       </div>
+
+      {preferencesChanged && !readOnly && (
+        <div className="review-banner" id="preferences-banner">
+          <span>Your preferences have changed since you set this plan. Reset this week if you want to see new options.</span>
+          <button type="button" className="btn" id="reset-week" onClick={() => dialogRef.current?.showModal()}>
+            Reset this week
+          </button>
+        </div>
+      )}
 
       {waiting.length > 0 && (
         <div className="review-banner" id="review-banner">
@@ -159,6 +171,10 @@ export default function DecidedWeek({ week, events, state, readOnly, actions, to
             ))}
           </ul>
         </details>
+      )}
+
+      {preferencesChanged && !readOnly && (
+        <ResetDialog dialogRef={dialogRef} week={week} events={events} state={state} today={today} onReset={actions.reset} />
       )}
     </div>
   );

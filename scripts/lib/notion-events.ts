@@ -92,13 +92,14 @@ export function toEventRow(page: NotionPage): { row: EventRow | null; poster: Po
   };
 }
 
-// Tuesday to Thursday of the week starting on this Monday.
+// Monday to Sunday of the week starting on this Monday. Each user's settings pick which
+// of these days they see.
 export function weekDays(monday: string): string[] {
   const start = new Date(`${monday}T00:00:00Z`);
   if (Number.isNaN(start.getTime()) || start.getUTCDay() !== 1 || start.toISOString().slice(0, 10) !== monday) {
     throw new Error(`${monday} isn't a Monday in YYYY-MM-DD form`);
   }
-  return [1, 2, 3].map((offset) => new Date(start.getTime() + offset * 86400000).toISOString().slice(0, 10));
+  return [0, 1, 2, 3, 4, 5, 6].map((offset) => new Date(start.getTime() + offset * 86400000).toISOString().slice(0, 10));
 }
 
 // This week and the next 8. On Sunday the coming week is added a day early, and this

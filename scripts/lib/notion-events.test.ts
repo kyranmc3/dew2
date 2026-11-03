@@ -82,8 +82,8 @@ test("toEventRow skips a row with no name or date", () => {
   assert.equal(toEventRow({ id: "x", properties: { Name: { title: [{ plain_text: "No date" }] }, Date: { date: null } } }).row, null);
 });
 
-test("weekDays gives Tuesday to Thursday and rejects anything but a Monday", () => {
-  assert.deepEqual(weekDays("2026-11-30"), ["2026-12-01", "2026-12-02", "2026-12-03"]);
+test("weekDays gives Monday to Sunday and rejects anything but a Monday", () => {
+  assert.deepEqual(weekDays("2026-11-30"), ["2026-11-30", "2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05", "2026-12-06"]);
   assert.throws(() => weekDays("2026-12-01"));
   assert.throws(() => weekDays("soon"));
 });

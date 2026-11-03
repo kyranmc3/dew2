@@ -24,7 +24,7 @@ export type WeekEvent = {
 
 export type WeekInfo = {
   start: string; // the Monday
-  days: string[];
+  days: string[]; // the days this user sees
   isReady: boolean;
   dayNotes: Record<string, string>;
 };
@@ -36,6 +36,7 @@ export type WeekState = {
   plan: Record<string, { booking: Booking }>;
   saved: boolean;
   skipped: boolean;
+  days: string[] | null; // kept from when the week was settled, or null to follow Settings
 };
 
-export const EMPTY_STATE: WeekState = { answers: {}, ranking: [], plan: {}, saved: false, skipped: false };
+export const EMPTY_STATE: WeekState = { answers: {}, ranking: [], plan: {}, saved: false, skipped: false, days: null };

@@ -69,12 +69,13 @@ test("buildState orders by rank and drops events no longer in the catalog", () =
       { event_id: "gone", answer: "yes", shortlist_rank: 3 },
     ],
     [{ event_id: "gone", booking: null }, { event_id: "a", booking: "booked" }],
-    { is_saved: true, is_skipped: false },
+    { is_saved: true, is_skipped: false, days: ["2026-11-03"] },
   );
   assert.deepEqual(s.ranking, ["b", "a"]);
   assert.deepEqual(Object.keys(s.answers).sort(), ["a", "b"]);
   assert.deepEqual(s.plan, { a: { booking: "booked" } });
   assert.equal(s.saved, true);
+  assert.deepEqual(s.days, ["2026-11-03"]);
 });
 
 test("buildState copes with no week row", () => {
@@ -100,7 +101,8 @@ test("diffStates writes only what changed", () => {
   const cleared = diffStates(before, answerEvent(before, "c", "maybe"));
   assert.deepEqual(cleared.responseDeletes, ["c"]);
 
-  assert.deepEqual(diffStates(before, { ...before, saved: true }).week, { is_saved: true, is_skipped: false });
+  assert.deepEqual(diffStates(before, { ...before, saved: true }).week, { is_saved: true, is_skipped: false, days: null });
+  assert.deepEqual(diffStates(before, { ...before, days: ["2026-11-03"] }).week, { is_saved: false, is_skipped: false, days: ["2026-11-03"] });
 });
 
 test("a full reset deletes every answer and commitment", () => {
@@ -108,7 +110,7 @@ test("a full reset deletes every answer and commitment", () => {
   const c = diffStates(before, EMPTY_STATE);
   assert.deepEqual(c.planDeletes, ["a"]);
   assert.deepEqual(c.responseDeletes.sort(), ["a", "b"]);
-  assert.deepEqual(c.week, { is_saved: false, is_skipped: false });
+  assert.deepEqual(c.week, { is_saved: false, is_skipped: false, days: null });
 });
 
 test("a week stays current through its Sunday and becomes past on the Monday after", () => {

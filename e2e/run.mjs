@@ -63,8 +63,8 @@ async function addPastWeeks(userId) {
   ]));
   must(await admin.from("plan_entries").insert({ user_id: userId, event_id: PAST[0].id, booking: "booked" }));
   must(await admin.from("week_states").insert([
-    { user_id: userId, week_start: PAST[0].start, is_saved: true, is_skipped: false },
-    { user_id: userId, week_start: PAST[1].start, is_saved: false, is_skipped: true },
+    { user_id: userId, week_start: PAST[0].start, is_saved: true, is_skipped: false, days: [1, 2, 3].map((n) => plusDays(PAST[0].start, n)) },
+    { user_id: userId, week_start: PAST[1].start, is_saved: false, is_skipped: true, days: [1, 2, 3].map((n) => plusDays(PAST[1].start, n)) },
   ]));
 }
 
@@ -81,7 +81,7 @@ async function buildFixture(userId) {
       responses.push({ user_id: userId, event_id: e.id, answer: rank >= 0 ? "yes" : e === maybe ? "maybe" : "no", shortlist_rank: rank >= 0 ? rank + 1 : null });
     });
     committed.forEach(([e, booking]) => plan.push({ user_id: userId, event_id: e.id, booking }));
-    states.push({ user_id: userId, week_start: monday, is_saved: true });
+    states.push({ user_id: userId, week_start: monday, is_saved: true, days: [1, 2, 3].map((n) => plusDays(monday, n)) });
     return { committed, noCount: events.length - yes.length - 1 };
   };
   const notBooked = await decide("2026-11-02", "2026-11-03", "2026-11-05", (events) => {
@@ -133,7 +133,7 @@ const db = {
   responses: async () => must(await admin.from("responses").select("event_id, answer, shortlist_rank").eq("user_id", account.user.id)),
   plan: async () => must(await admin.from("plan_entries").select("event_id, booking").eq("user_id", account.user.id)),
   log: async () => must(await admin.from("response_log").select("kind, value").eq("user_id", account.user.id)),
-  week: async (start) => must(await admin.from("week_states").select("is_saved, is_skipped").eq("user_id", account.user.id).eq("week_start", start).maybeSingle()),
+  week: async (start) => must(await admin.from("week_states").select("is_saved, is_skipped, days").eq("user_id", account.user.id).eq("week_start", start).maybeSingle()),
 };
 const eventId = async (name, date) => must(await admin.from("events").select("id").ilike("name", `${name}%`).eq("event_date", date).single()).id;
 
@@ -392,10 +392,32 @@ async function main() {
   const acct = () => ev(`!!document.getElementById('account-menu')`);
   check("account menu starts closed", !(await acct())); await click("Account"); t = await text(); check("account menu items", t.includes("Settings") && t.includes("Log out")); await shot("home-account-menu");
   await click("Settings"); await sleep(1000); t = await text();
-  check("locked message on top", t.trim().startsWith("Settings are locked for v1."), t.slice(0, 100));
-  check("days", (await ev(`[...document.querySelectorAll('#settings-days li.on')].map(l=>l.textContent).join()`)) === "T,W,Th" && (await ev(`document.querySelectorAll('#settings-days li').length`)) === 7);
-  check("sources", (await ev(`[...document.querySelectorAll('#settings-sources li.on')].map(l=>l.textContent).join()`)) === "Baby's All Right,Lectures on Tap,Recess Grove,The Moth");
+  const selectedDays = () => ev(`[...document.querySelectorAll('#settings-days button[aria-pressed=true]')].map(b=>b.getAttribute('aria-label')).join()`);
+  check("days start as Tuesday to Thursday", (await selectedDays()) === "Tuesday,Wednesday,Thursday" && (await ev(`document.querySelectorAll('#settings-days li').length`)) === 7);
+  check("sources", (await ev(`[...document.querySelectorAll('#settings-sources li.on')].map(l=>l.textContent).join()`)) === "Baby's All Right,Lectures on Tap,Recess Grove,The Moth" && t.includes("Sources can't be changed yet."));
+  check("no Save until something changes", !(await ev(`!!document.getElementById('save-days')`)));
   await shot("settings");
+  await click("Wednesday"); await click("Thursday"); await click("Tuesday");
+  check("the last day can't be removed", (await selectedDays()) === "Tuesday" && (await ev(`document.getElementById('days-message').textContent`)) === "Keep at least one day.");
+  await click("Sunday"); check("Sunday can be selected", (await selectedDays()) === "Tuesday,Sunday");
+  await click("Sunday"); await click("Wednesday"); await click("Thursday"); await click("Friday"); await click("Tuesday");
+  check("days can change to Wednesday to Friday", (await selectedDays()) === "Wednesday,Thursday,Friday");
+  await click("Save"); await sleep(1500);
+  t = await ev(`document.getElementById('days-message').textContent`);
+  check("saving names the first week it applies to", /^Saved\. Your new days apply from the week of \w+ \d+\.$/.test(t), t);
+  await go("/settings"); check("the new days are kept", (await selectedDays()) === "Wednesday,Thursday,Friday");
+  await go("/weeks/2026-11-23"); check("an open week follows the new days", await ev(`!document.getElementById('day-2026-11-24')&&['25','26','27'].every(d=>!!document.getElementById('day-2026-11-'+d))`));
+  await go("/weeks/2026-11-09"); t = await text();
+  check("a settled week keeps its days", await ev(`['10','11','12'].every(d=>!!document.getElementById('day-2026-11-'+d))&&!document.getElementById('day-2026-11-13')`));
+  check("a settled week shows the preferences banner", t.includes("Your preferences have changed since you set this plan. Reset this week if you want to see new options."));
+  await go("/weeks/2026-11-16"); await click("Reset this week");
+  t = await ev(`document.getElementById('reset-text').textContent`);
+  check("its reset mentions the booking", t === "Your answers and plan will be cleared, including 1 booked. This doesn't cancel any tickets.", t);
+  await click("Reset"); await sleep(800);
+  check("reset picks up the new days", (await has("Are you interested?")) && (await ev(`!document.getElementById('day-2026-11-17')&&!!document.getElementById('day-2026-11-18')`)));
+  check("reset releases the week's days", (await db.week("2026-11-16")).days === null);
+  await go("/settings"); await click("Friday"); await click("Tuesday"); await click("Save"); await sleep(1500);
+  await go("/weeks/2026-11-09"); check("changing back removes the banner", !(await has("Your preferences have changed")));
   if (notReady.length) { await go(`/weeks/${notReady[0].start_date}`); check("a week that isn't ready goes home", (await ev(`location.pathname`)) === "/"); }
   await go("/weeks/not-a-date"); check("a bad address shows not found", await has("doesn't exist"));
 
