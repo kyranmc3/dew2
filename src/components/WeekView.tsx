@@ -4,26 +4,33 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { loadWeekState, saveChanges } from "@/lib/weeks/data";
-import { diffStates, isDecided, isPast, noChanges } from "@/lib/weeks/state";
+import { merge, settleDays, weekView } from "@/lib/weeks/days";
+import { diffStates, isDecided, isPast, noChanges, resetWeek } from "@/lib/weeks/state";
 import type { WeekEvent, WeekInfo, WeekState } from "@/lib/weeks/types";
 import DecidedWeek from "./DecidedWeek";
 import ReviewWeek from "./ReviewWeek";
 import SkippedWeek from "./SkippedWeek";
 
-type Props = { week: WeekInfo; events: WeekEvent[]; today: string; userId: string; initial: WeekState };
+// `events` is the whole week, and `initial` holds every choice in it. The screens only see
+// the days this user is shown.
+type Props = { week: WeekInfo; events: WeekEvent[]; today: string; userId: string; initial: WeekState; weekdays: number[] };
 
 export type WeekActions = {
   change: (update: (s: WeekState) => WeekState) => void;
+  reset: () => void;
   leave: () => void;
   edit: () => void;
   reviewFrom: (eventId: string) => void;
   stopEditing: () => void;
 };
 
-export default function WeekView({ week, events, today, userId, initial }: Props) {
+export default function WeekView({ week, events, today, userId, initial, weekdays }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const [state, setState] = useState(initial);
+  const [full, setFull] = useState(initial);
+  const viewOf = useCallback((s: WeekState) => weekView(week.start, events, s, weekdays, today), [events, today, week.start, weekdays]);
+  const view = viewOf(full);
+  const state = view.state;
   const [editing, setEditing] = useState(false);
   const [failed, setFailed] = useState(false);
   const readOnly = isPast(week.start, today);
@@ -63,14 +70,24 @@ export default function WeekView({ week, events, today, userId, initial }: Props
     return writing.current;
   }, [pending, supabase, userId, week.start]);
 
-  const change = useCallback(
-    (update: (s: WeekState) => WeekState) => {
-      latest.current = update(latest.current);
-      setState(latest.current);
+  // Changes are made on what's on screen, then put back with the hidden choices. Settling
+  // or unsettling the week also records which days it keeps.
+  const apply = useCallback(
+    (next: (before: WeekState, shown: ReturnType<typeof viewOf>) => WeekState) => {
+      const before = latest.current;
+      const shown = viewOf(before);
+      latest.current = settleDays(before, next(before, shown), shown.days, today);
+      setFull(latest.current);
       flush();
     },
-    [flush],
+    [flush, today, viewOf],
   );
+  const change = useCallback(
+    (update: (s: WeekState) => WeekState) => apply((before, shown) => merge(before, update(shown.state), shown.ids)),
+    [apply],
+  );
+  // Reset also clears choices on hidden days, except days that have passed.
+  const reset = useCallback(() => apply((before) => resetWeek(before, events, today)), [apply, events, today]);
 
   useEffect(() => {
     if (!failed) return;
@@ -89,7 +106,7 @@ export default function WeekView({ week, events, today, userId, initial }: Props
         if (latest.current !== before || writing.current) return;
         latest.current = fresh;
         persisted.current = fresh;
-        setState(fresh);
+        setFull(fresh);
       } catch (error) {
         console.error(error);
       }
@@ -109,6 +126,7 @@ export default function WeekView({ week, events, today, userId, initial }: Props
 
   const actions: WeekActions = {
     change,
+    reset,
     leave: async () => {
       await flush();
       router.push(readOnly ? "/past-weeks" : "/");
@@ -127,13 +145,13 @@ export default function WeekView({ week, events, today, userId, initial }: Props
     },
   };
 
-  const props = { week, events, state, actions, today };
+  const props = { week: { ...week, days: view.days }, events: view.events, state, actions, today };
   return (
     <>
       {state.skipped ? (
         <SkippedWeek {...props} readOnly={readOnly} />
       ) : readOnly || (isDecided(state) && !editing) ? (
-        <DecidedWeek {...props} readOnly={readOnly} />
+        <DecidedWeek {...props} readOnly={readOnly} preferencesChanged={view.preferencesChanged} />
       ) : (
         <ReviewWeek {...props} />
       )}

@@ -77,7 +77,7 @@ export const hasPassed = (date: string, today: string) => date < today;
 export function resetWeek(s: WeekState, events: { id: string; date: string }[], today: string): WeekState {
   const kept = new Set(events.filter((e) => hasPassed(e.date, today)).map((e) => e.id));
   const keep = <T,>(entries: Record<string, T>) => Object.fromEntries(Object.entries(entries).filter(([id]) => kept.has(id)));
-  return { answers: keep(s.answers), ranking: s.ranking.filter((id) => kept.has(id)), plan: keep(s.plan), saved: false, skipped: false };
+  return { answers: keep(s.answers), ranking: s.ranking.filter((id) => kept.has(id)), plan: keep(s.plan), saved: false, skipped: false, days: s.days };
 }
 
 export type WeekStatus = "past" | "skipped" | "locked" | "decided" | "review" | "notReady";
@@ -101,7 +101,7 @@ export const countable = <E extends { id: string; date: string }>(events: E[], s
 
 export type ResponseRow = { event_id: string; answer: Answer; shortlist_rank: number | null };
 export type PlanRow = { event_id: string; booking: Booking };
-export type WeekStateRow = { is_saved: boolean; is_skipped: boolean };
+export type WeekStateRow = { is_saved: boolean; is_skipped: boolean; days: string[] | null };
 
 // Events no longer in the catalog are left out, so they can't reach the screen.
 export function buildState(eventIds: Set<string>, responses: ResponseRow[], plan: PlanRow[], week: WeekStateRow | null | undefined): WeekState {
@@ -115,6 +115,7 @@ export function buildState(eventIds: Set<string>, responses: ResponseRow[], plan
     plan: Object.fromEntries(plan.filter((p) => eventIds.has(p.event_id)).map((p) => [p.event_id, { booking: p.booking }])),
     saved: week?.is_saved ?? false,
     skipped: week?.is_skipped ?? false,
+    days: week?.days ?? null,
   };
 }
 
@@ -141,7 +142,10 @@ export function diffStates(before: WeekState, after: WeekState): StateChanges {
     planUpserts: Object.keys(after.plan)
       .filter((id) => !before.plan[id] || before.plan[id].booking !== after.plan[id].booking)
       .map((id) => ({ event_id: id, booking: after.plan[id].booking })),
-    week: before.saved !== after.saved || before.skipped !== after.skipped ? { is_saved: after.saved, is_skipped: after.skipped } : null,
+    week:
+      before.saved !== after.saved || before.skipped !== after.skipped || String(before.days) !== String(after.days)
+        ? { is_saved: after.saved, is_skipped: after.skipped, days: after.days }
+        : null,
   };
 }
 

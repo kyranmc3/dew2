@@ -9,8 +9,8 @@ import { hasChoices, isPast } from "@/lib/weeks/state";
 export const metadata: Metadata = { title: "Past Weeks · dew" };
 
 export default async function PastWeeksPage() {
-  const weeks = await loadWeekSummaries(await createClient());
   const today = todayInNewYork();
+  const weeks = await loadWeekSummaries(await createClient(), today);
   const past = weeks
     .filter(({ week, state }) => isPast(week.start, today) && (hasChoices(state) || state.skipped))
     .reverse();
@@ -21,8 +21,8 @@ export default async function PastWeeksPage() {
       <h1 className="page-title" style={{ fontSize: 40 }}>Past Weeks</h1>
       {past.length ? (
         <div className="weeks" id="past-weeks">
-          {past.map((summary) => (
-            <WeekRow key={summary.week.start} {...summary} today={today} />
+          {past.map(({ week, events, state }) => (
+            <WeekRow key={week.start} week={week} events={events} state={state} today={today} />
           ))}
         </div>
       ) : (

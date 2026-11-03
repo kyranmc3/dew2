@@ -121,6 +121,8 @@ summary { cursor: pointer; font-weight: 700; }
 .said-no { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 4px 4px 4px 12px; background: var(--pill); border-radius: 6px; font-size: 14px; color: var(--muted); }
 .said-no .link { flex: none; min-height: 44px; padding: 0 10px; }
 .said-no-time { white-space: nowrap; }
+.pills li:has(button) { padding: 0; }
+.pills button { display: block; min-width: 44px; min-height: 44px; padding: 8px 14px; border: 0; border-radius: 999px; background: none; font: inherit; color: inherit; cursor: pointer; }
 /* A day that has passed stays visible, greyed out, and can't be changed. */
 .section.passed .card, .section.passed .said-no, .day.passed .item, .pick.passed, .plan-card.passed { opacity: .5; filter: grayscale(1); }
 .passed-note { margin: 0; }

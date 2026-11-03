@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { DEFAULT_WEEKDAYS, weekDates, weekView } from "./days.ts";
 import { time12 } from "./format.ts";
 import { buildState, diffStates, noChanges, type PlanRow, type ResponseRow, type WeekStateRow } from "./state.ts";
 import type { WeekEvent, WeekInfo, WeekState } from "./types.ts";
@@ -94,34 +95,44 @@ export async function loadSources(supabase: SupabaseClient): Promise<string[]> {
   return [...new Set(rows.map((r) => r.source).filter((s): s is string => !!s))].sort();
 }
 
+// The weekdays this user plans around. Row-level security limits it to the user.
+export async function loadWeekdays(supabase: SupabaseClient): Promise<number[]> {
+  const row = check<{ weekdays: number[] } | null>(await supabase.from("user_settings").select("weekdays").maybeSingle());
+  return row?.weekdays ?? DEFAULT_WEEKDAYS;
+}
+
 export async function loadWeekState(supabase: SupabaseClient, weekStart: string, eventIds: string[]): Promise<WeekState> {
   const [responses, plan, week] = await Promise.all([
     supabase.from("responses").select("event_id, answer, shortlist_rank").in("event_id", eventIds),
     supabase.from("plan_entries").select("event_id, booking").in("event_id", eventIds),
-    supabase.from("week_states").select("is_saved, is_skipped").eq("week_start", weekStart).maybeSingle(),
+    supabase.from("week_states").select("is_saved, is_skipped, days").eq("week_start", weekStart).maybeSingle(),
   ]);
   return buildState(new Set(eventIds), check<ResponseRow[]>(responses), check<PlanRow[]>(plan), check<WeekStateRow | null>(week));
 }
 
-// Every week with its events and the user's choices, for the home and past weeks pages.
-// Row-level security limits the choices to the user.
-export async function loadWeekSummaries(supabase: SupabaseClient) {
+// Every week with the events and choices on the days the user sees, for the home, past
+// weeks and settings pages. Row-level security limits the choices to the user. `full`
+// also holds choices on days that are hidden.
+export async function loadWeekSummaries(supabase: SupabaseClient, today: string) {
   const weeks = check<{ start_date: string; days: string[]; is_ready: boolean; day_notes: Record<string, string> }[]>(
     await supabase.from("weeks").select("start_date, days, is_ready, day_notes").order("start_date"),
   ).map(toWeek);
-  const [responses, plan, states] = await Promise.all([
+  const [responses, plan, states, weekdays] = await Promise.all([
     supabase.from("responses").select("event_id, answer, shortlist_rank"),
     supabase.from("plan_entries").select("event_id, booking"),
-    supabase.from("week_states").select("week_start, is_saved, is_skipped"),
+    supabase.from("week_states").select("week_start, is_saved, is_skipped, days"),
+    loadWeekdays(supabase),
   ]);
   const planRows = check<PlanRow[]>(plan);
   const responseRows = check<ResponseRow[]>(responses);
   const stateRows = check<(WeekStateRow & { week_start: string })[]>(states);
-  const events = weeks.length ? visibleEvents(await loadEvents(supabase, weeks[0].days[0], weeks.at(-1)!.days.at(-1)!), planRows) : [];
+  const events = weeks.length ? visibleEvents(await loadEvents(supabase, weeks[0].start, weekDates(weeks.at(-1)!.start)[6]), planRows) : [];
   return weeks.map((week) => {
-    const weekEvents = events.filter((e) => week.days.includes(e.date));
-    const state = buildState(new Set(weekEvents.map((e) => e.id)), responseRows, planRows, stateRows.find((s) => s.week_start === week.start));
-    return { week, events: weekEvents, state };
+    const dates = weekDates(week.start);
+    const weekEvents = events.filter((e) => dates.includes(e.date));
+    const full = buildState(new Set(weekEvents.map((e) => e.id)), responseRows, planRows, stateRows.find((s) => s.week_start === week.start));
+    const view = weekView(week.start, weekEvents, full, weekdays, today);
+    return { week: { ...week, days: view.days }, events: view.events, state: view.state, full };
   });
 }
 

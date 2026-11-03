@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { checkedOn, dayLabel, priceText, shortDate, timeText, weekLabel, weekRange } from "@/lib/weeks/format";
-import { answerEvent, canSave, commitEvent, countable, hasChoices, hasPassed, moveEvent, resetWeek } from "@/lib/weeks/state";
+import { answerEvent, canSave, commitEvent, countable, hasChoices, hasPassed, moveEvent } from "@/lib/weeks/state";
 import type { Answer, WeekEvent, WeekInfo, WeekState } from "@/lib/weeks/types";
 import MoreMenu from "./MoreMenu";
 import { AvailabilityTag, ExternalLink, Poster, Tag } from "./parts";
+import ResetDialog from "./ResetDialog";
 import type { WeekActions } from "./WeekView";
 
 type Props = { week: WeekInfo; events: WeekEvent[]; state: WeekState; actions: WeekActions; today: string };
@@ -153,20 +154,10 @@ export default function ReviewWeek({ week, events, state, actions, today }: Prop
 
   const dialogRef = useRef<HTMLDialogElement>(null);
   const reset = () => {
-    dialogRef.current?.close();
     setSheetOpen(false);
-    actions.change((s) => resetWeek(s, events, today));
+    actions.reset();
     actions.stopEditing();
   };
-  // Reset leaves days that have passed alone, so the confirmation only counts the rest.
-  const started = week.days.some((d) => hasPassed(d, today));
-  const bookedToClear = events.filter((e) => state.plan[e.id]?.booking === "booked" && !hasPassed(e.date, today)).length;
-  const resetText = [
-    `Your answers and plan${started ? " from today on" : ""} will be cleared${bookedToClear ? `, including ${bookedToClear} booked. This doesn't cancel any tickets.` : "."}`,
-    started && "Earlier days stay as they are.",
-  ]
-    .filter(Boolean)
-    .join(" ");
 
   return (
     <>
@@ -288,27 +279,7 @@ export default function ReviewWeek({ week, events, state, actions, today }: Prop
         </aside>
       </div>
 
-      <dialog
-        ref={dialogRef}
-        id="confirm-reset"
-        aria-labelledby="confirm-title"
-        onClick={(event) => {
-          if (event.target === dialogRef.current) dialogRef.current.close();
-        }}
-      >
-        <div className="dialog-in">
-          <h2 id="confirm-title" style={{ fontSize: 22 }}>Reset this week?</h2>
-          <p id="reset-text">{resetText}</p>
-          <div className="dialog-btns">
-            <button type="button" className="btn" id="reset-cancel" autoFocus onClick={() => dialogRef.current?.close()}>
-              Cancel
-            </button>
-            <button type="button" className="btn danger" id="reset-confirm" onClick={reset}>
-              Reset
-            </button>
-          </div>
-        </div>
-      </dialog>
+      <ResetDialog dialogRef={dialogRef} week={week} events={events} state={state} today={today} onReset={reset} />
     </>
   );
 }

@@ -6,8 +6,8 @@ import { todayInNewYork } from "@/lib/weeks/format";
 import { isPast } from "@/lib/weeks/state";
 
 export default async function Home() {
-  const weeks = await loadWeekSummaries(await createClient());
   const today = todayInNewYork();
+  const weeks = await loadWeekSummaries(await createClient(), today);
 
   return (
     <div className="wrap page">
@@ -18,8 +18,8 @@ export default async function Home() {
       <div className="weeks">
         {weeks
           .filter(({ week }) => !isPast(week.start, today))
-          .map((summary) => (
-            <WeekRow key={summary.week.start} {...summary} today={today} />
+          .map(({ week, events, state }) => (
+            <WeekRow key={week.start} week={week} events={events} state={state} today={today} />
           ))}
       </div>
     </div>
