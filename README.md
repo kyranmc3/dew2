@@ -8,8 +8,8 @@ I built dew because good events kept selling out before I got around to choosing
 
 1. **Source:** events go into a Notion database, which stays the place they're reviewed.
 2. **Sync:** a daily job copies the next few weeks of events to Postgres and shrinks their posters. Weeks stay open, so new events keep arriving until something is booked.
-3. **Review:** answer No, Maybe or Yes on each event, rank your yeses, and commit to at least one.
-4. **Plan:** the saved week shows your plan and backups, and tracks whether each commitment is booked or waitlisted.
+3. **Review:** answer No, Maybe or Yes on each event on your days, rank your yeses, and commit to at least one. You pick your days in Settings, and a week you've saved or skipped keeps the days it had.
+4. **Plan:** the saved week shows your plan and backups, tracks whether each commitment is booked or waitlisted, and can add any of it to Google Calendar.
 
 Every answer, rank and booking change is kept in an append-only log, which will feed a taste profile later.
 
@@ -39,7 +39,7 @@ Add `SUPABASE_SECRET_KEY` and `NOTION_TOKEN` to `.env.local`, then:
 npm run sync
 ```
 
-This copies the Tuesday to Thursday events for this week and the next 8, along with any new posters. It's safe to run again, and it only touches the catalog, never anyone's choices. In production, `.github/workflows/sync.yml` runs it daily.
+This copies every event, Monday to Sunday, for this week and the next 8, along with any new posters. On Sundays it also includes the coming week, so it covers one extra week that day. It's safe to run again, and it only touches the catalog, never anyone's choices. In production, `.github/workflows/sync.yml` runs it daily.
 
 ## Test
 
