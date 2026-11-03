@@ -42,6 +42,8 @@ const toEvent = (e: EventRow): WeekEvent => ({
   place: [e.venue, e.neighborhood].filter(Boolean).join(", "),
   start: time12(e.start_time),
   end: time12(e.end_time),
+  startTime: e.start_time,
+  endTime: e.end_time,
   price: e.price,
   avail: e.availability,
   img: posterUrl(e.poster_path),

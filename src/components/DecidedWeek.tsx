@@ -1,4 +1,4 @@
-import { backupTag, checkedOn, dayLabel, priceText, shortDate, timeText, weekLabel, weekRange } from "@/lib/weeks/format";
+import { backupTag, checkedOn, dayLabel, googleCalendarUrl, priceText, shortDate, timeText, weekLabel, weekRange } from "@/lib/weeks/format";
 import { isLocked, planIds, setBooking, toReview } from "@/lib/weeks/state";
 import type { WeekEvent, WeekInfo, WeekState } from "@/lib/weeks/types";
 import { AvailabilityTag, BookingTag, ExternalLink, Poster, Tag } from "./parts";
@@ -89,9 +89,10 @@ export default function DecidedWeek({ week, events, state, readOnly, actions }: 
                         </div>
                       </div>
                     )}
-                    {e.link && (
-                      <div className="small" style={{ marginTop: "auto", paddingTop: 4 }}>
-                        <ExternalLink href={e.link}>Full listing</ExternalLink>
+                    {(e.link || !readOnly) && (
+                      <div className="small" style={{ marginTop: "auto", paddingTop: 4, display: "flex", flexWrap: "wrap", gap: "8px 16px" }}>
+                        {e.link && <ExternalLink href={e.link}>Full listing</ExternalLink>}
+                        {!readOnly && <ExternalLink href={googleCalendarUrl(e)} className="link calendar-link">Add to Google Calendar</ExternalLink>}
                       </div>
                     )}
                   </div>

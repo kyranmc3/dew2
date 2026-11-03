@@ -11,6 +11,8 @@ export type WeekEvent = {
   place: string;
   start: string | null; // "7:00 PM"
   end: string | null;
+  startTime: string | null; // "19:00:00", in New York
+  endTime: string | null;
   price: number | null;
   avail: string | null;
   img: string | null;
