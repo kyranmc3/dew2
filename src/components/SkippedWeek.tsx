@@ -2,7 +2,7 @@ import { weekLabel, weekRange } from "@/lib/weeks/format";
 import type { WeekInfo, WeekState } from "@/lib/weeks/types";
 import type { WeekActions } from "./WeekView";
 
-export default function SkippedWeek({ week, readOnly, actions }: { week: WeekInfo; state: WeekState; readOnly: boolean; actions: WeekActions }) {
+export default function SkippedWeek({ week, readOnly, actions }: { week: WeekInfo; state: WeekState; readOnly: boolean; actions: WeekActions; today: string }) {
   return (
     <div className="wrap page" style={{ gap: 26 }}>
       <button type="button" className="link" onClick={actions.leave}>

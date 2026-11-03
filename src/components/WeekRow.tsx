@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { priceText, relativeWeek, shortDate, weekLabel, weekRange } from "@/lib/weeks/format";
-import { bookingLine, isDecided, planIds, toReview, weekStatus } from "@/lib/weeks/state";
+import { bookingLine, countable, isDecided, planIds, toReview, weekStatus } from "@/lib/weeks/state";
 import type { WeekEvent, WeekInfo, WeekState } from "@/lib/weeks/types";
 import { Poster, Tag } from "./parts";
 
@@ -42,7 +42,7 @@ export default function WeekRow({ week, events, state, today }: Props) {
     const plan = planIds(state);
     const first = events.find((e) => e.id === plan[0])!;
     const others = plan.length - 1;
-    const waiting = status === "decided" ? toReview(events, state).length : 0;
+    const waiting = status === "decided" ? toReview(events, state, today).length : 0;
     return (
       <Link className="row" id={rowId} href={href}>
         {title}
@@ -79,12 +79,13 @@ export default function WeekRow({ week, events, state, today }: Props) {
       </Link>
     );
   }
+  const total = countable(events, state, today).length;
   return (
     <Link className="row review" id={rowId} href={href}>
       {title}
       <div className="c-status"><Tag kind="soft">To review</Tag></div>
       <div className="c-plan" style={{ fontWeight: 800 }}>
-        {answered ? `${answered} of ${events.length} answered` : `${events.length} option${events.length === 1 ? "" : "s"} to go through`}
+        {answered ? `${answered} of ${total} answered` : `${total} option${total === 1 ? "" : "s"} to go through`}
       </div>
       <div className="c-next" style={{ fontWeight: 800, color: "var(--accent)" }}>
         {answered ? "Continue review →" : "Start review →"}

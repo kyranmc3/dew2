@@ -64,10 +64,20 @@ export function bookingLine(s: WeekState) {
 // A week is locked once something is booked, which stops prompts about new events.
 export const isLocked = (s: WeekState) => planIds(s).some((id) => s.plan[id].booking === "booked");
 
+// A week stays current through its Sunday and becomes past on the Monday after.
 export function isPast(monday: string, today: string) {
-  const sunday = new Date(new Date(`${monday}T00:00:00Z`).getTime() + 6 * 86400000).toISOString().slice(0, 10);
-  // The week rolls over on Sunday morning.
-  return today >= sunday;
+  const nextMonday = new Date(new Date(`${monday}T00:00:00Z`).getTime() + 7 * 86400000).toISOString().slice(0, 10);
+  return today >= nextMonday;
+}
+
+// A day has passed once it's over in New York. Nothing on it can be changed.
+export const hasPassed = (date: string, today: string) => date < today;
+
+// Reset clears today onward. Choices on days that have passed stay as they were.
+export function resetWeek(s: WeekState, events: { id: string; date: string }[], today: string): WeekState {
+  const kept = new Set(events.filter((e) => hasPassed(e.date, today)).map((e) => e.id));
+  const keep = <T,>(entries: Record<string, T>) => Object.fromEntries(Object.entries(entries).filter(([id]) => kept.has(id)));
+  return { answers: keep(s.answers), ranking: s.ranking.filter((id) => kept.has(id)), plan: keep(s.plan), saved: false, skipped: false };
 }
 
 export type WeekStatus = "past" | "skipped" | "locked" | "decided" | "review" | "notReady";
@@ -82,8 +92,12 @@ export function weekStatus(monday: string, today: string, hasEvents: boolean, s:
 }
 
 // Events waiting for an answer. Only a Decided week prompts about these.
-export const toReview = <E extends { id: string; removed: boolean }>(events: E[], s: WeekState) =>
-  events.filter((e) => !e.removed && !s.answers[e.id]);
+export const toReview = <E extends { id: string; date: string; removed: boolean }>(events: E[], s: WeekState, today: string) =>
+  events.filter((e) => !e.removed && !s.answers[e.id] && !hasPassed(e.date, today));
+
+// Events that count toward progress: everything answered, and anything still open.
+export const countable = <E extends { id: string; date: string }>(events: E[], s: WeekState, today: string) =>
+  events.filter((e) => s.answers[e.id] || !hasPassed(e.date, today));
 
 export type ResponseRow = { event_id: string; answer: Answer; shortlist_rank: number | null };
 export type PlanRow = { event_id: string; booking: Booking };
